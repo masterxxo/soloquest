@@ -178,7 +178,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 55ecaa4d8bc6cdcaa843557d595c502e, type: 2}
+  - {fileID: 2100000, guid: b9d59ddf8bb8c5300b0b7f98f5a5d28d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -220,10 +220,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 331241365}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ef0790d414e63d5aa8e5fa2b0c6d395, type: 3}
+  m_Script: {fileID: 11500000, guid: 8971e19c193a320049cde0095cb60409, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TextureScroller
-  scrollSpeed: -0.02
+  m_EditorClassIdentifier: Assembly-CSharp::SideBarGlitch
+  scrollSpeed: -0.03
+  glitchInterval: 3
+  glitchDuration: 0.2
+  glitchStrength: 0.2
+  glitchBandSize: 0.04
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0
@@ -5480,7 +5484,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 55ecaa4d8bc6cdcaa843557d595c502e, type: 2}
+  - {fileID: 2100000, guid: b9d59ddf8bb8c5300b0b7f98f5a5d28d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -5522,10 +5526,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 1738706468}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ef0790d414e63d5aa8e5fa2b0c6d395, type: 3}
+  m_Script: {fileID: 11500000, guid: 8971e19c193a320049cde0095cb60409, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TextureScroller
-  scrollSpeed: -0.02
+  m_EditorClassIdentifier: Assembly-CSharp::SideBarGlitch
+  scrollSpeed: -0.03
+  glitchInterval: 3
+  glitchDuration: 0.2
+  glitchStrength: 0.2
+  glitchBandSize: 0.04
 --- !u!1 &1926476363
 GameObject:
   m_ObjectHideFlags: 0
