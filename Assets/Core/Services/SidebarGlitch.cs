@@ -11,6 +11,12 @@ public class SideBarGlitch : MonoBehaviour
     public float glitchStrength = 0.04f;   // max X offset
     public float glitchBandSize = 0.05f;   // rozmiar paska (0-1)
 
+    public bool IsGlitching => _isGlitching;
+    public float GetScrollOffset() => _scrollOffset;
+    public float GetGlitchPosition() => _mat.GetFloat("_GlitchPosition");
+    public float GetGlitchSize() => _mat.GetFloat("_GlitchSize");
+    public float GetGlitchOffset() => _mat.GetFloat("_GlitchOffset");
+
     private Material _mat;
     private float _scrollOffset;
     private float _glitchTimer;
