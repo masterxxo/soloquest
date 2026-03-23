@@ -27,7 +27,6 @@ public class SideBarGlitch : MonoBehaviour
 
     void Update()
     {
-        Debug.Log($"Scroll: {_scrollOffset}, Glitching: {_isGlitching}");
         // Scrollowanie
         _scrollOffset = Mathf.Repeat(_scrollOffset + scrollSpeed * Time.deltaTime, 1f);
         _mat.SetFloat("_ScrollOffset", _scrollOffset);
