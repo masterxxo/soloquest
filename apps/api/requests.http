@@ -1,0 +1,80 @@
+@host = http://localhost:3001
+
+### Sign up — run once to create the user (also sets the session cookie).
+### If the user already exists this 422s; just use Sign in below instead.
+# @name signUp
+POST {{host}}/api/auth/sign-up/email
+Content-Type: application/json
+
+{
+  "name": "Sung Jinwoo",
+  "email": "hunter@example.com",
+  "password": "password1234"
+}
+
+### Sign in — sets the session cookie (REST Client reuses it for later requests).
+# @name signIn
+POST {{host}}/api/auth/sign-in/email
+Content-Type: application/json
+
+{
+  "email": "hunter@example.com",
+  "password": "password1234"
+}
+
+### Create quest #1 (difficulty C = 50 XP)
+# @name createQuest1
+POST {{host}}/api/quests
+Content-Type: application/json
+
+{
+  "title": "Clear the dungeon",
+  "description": "Finish a 30-minute workout",
+  "difficulty": "C"
+}
+
+### Create quest #2 (difficulty C = 50 XP)
+# @name createQuest2
+POST {{host}}/api/quests
+Content-Type: application/json
+
+{
+  "title": "Daily report",
+  "description": "Write the standup notes",
+  "difficulty": "C"
+}
+
+### List all of my quests
+GET {{host}}/api/quests
+
+### List only active quests
+GET {{host}}/api/quests?status=active
+
+### Complete quest #1 -> +50 XP (total 50, still level 1, leveledUp:false)
+POST {{host}}/api/quests/{{createQuest1.response.body.$.id}}/complete
+
+### Complete quest #2 -> +50 XP (total 100 -> level 2, leveledUp:true)
+POST {{host}}/api/quests/{{createQuest2.response.body.$.id}}/complete
+
+### List again — both now status 'completed'
+GET {{host}}/api/quests
+
+### List only completed quests
+GET {{host}}/api/quests?status=completed
+
+### Complete quest #1 again -> 409 (no double XP)
+POST {{host}}/api/quests/{{createQuest1.response.body.$.id}}/complete
+
+### Patch quest #2's title (owner-only, partial)
+PATCH {{host}}/api/quests/{{createQuest2.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "title": "Daily report (edited)"
+}
+
+### Delete quest #1 (owner-only)
+DELETE {{host}}/api/quests/{{createQuest1.response.body.$.id}}
+
+### Sanity: unauthenticated access is rejected (run after clearing cookies) -> 401
+# GET {{host}}/api/quests

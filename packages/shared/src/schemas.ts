@@ -8,3 +8,7 @@ export const createQuestSchema = z.object({
 });
 
 export type CreateQuestInput = z.infer<typeof createQuestSchema>;
+
+export const updateQuestSchema = createQuestSchema.partial();
+
+export type UpdateQuestInput = z.infer<typeof updateQuestSchema>;
