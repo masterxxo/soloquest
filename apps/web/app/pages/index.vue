@@ -36,6 +36,10 @@ function onDeleted(id: string) {
   activeQuests.value = (activeQuests.value ?? []).filter((q) => q.id !== id);
 }
 
+function onUpdated(quest: Quest) {
+  activeQuests.value = (activeQuests.value ?? []).map((q) => (q.id === quest.id ? quest : q));
+}
+
 // Lightweight "System"-style level-up feedback (no engine animations).
 const levelUpTo = ref<number | null>(null);
 let levelUpTimer: ReturnType<typeof setTimeout> | null = null;
@@ -91,7 +95,7 @@ async function onSignOut() {
 
     <!-- Quests -->
     <section class="quests">
-      <QuestForm @created="onCreated" />
+      <QuestForm mode="create" @created="onCreated" />
 
       <div class="list">
         <h2>Active quests</h2>
@@ -104,6 +108,7 @@ async function onSignOut() {
           :quest="q"
           @completed="onCompleted"
           @deleted="onDeleted"
+          @updated="onUpdated"
         />
       </div>
     </section>

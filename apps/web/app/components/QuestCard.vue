@@ -2,11 +2,24 @@
 import { client, type Quest, type CompleteResult } from '~/lib/api-client';
 
 const props = defineProps<{ quest: Quest }>();
-const emit = defineEmits<{ completed: [result: CompleteResult]; deleted: [id: string] }>();
+const emit = defineEmits<{
+  completed: [result: CompleteResult];
+  deleted: [id: string];
+  updated: [quest: Quest];
+}>();
 
 const completing = ref(false);
 const deleting = ref(false);
+const editing = ref(false);
 const errorMsg = ref<string | null>(null);
+
+// Only active quests can be edited/completed (mirrors the backend guard).
+const isActive = computed(() => props.quest.status === 'active');
+
+function onUpdated(quest: Quest) {
+  editing.value = false;
+  emit('updated', quest);
+}
 
 // Solo Leveling rank colours, E (weakest) → S (strongest).
 const RANK_COLORS: Record<string, string> = {
@@ -51,7 +64,15 @@ async function onDelete() {
 </script>
 
 <template>
-  <article class="quest">
+  <QuestForm
+    v-if="editing"
+    mode="edit"
+    :initial="quest"
+    @updated="onUpdated"
+    @cancel="editing = false"
+  />
+
+  <article v-else class="quest">
     <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
       {{ quest.difficulty }}
     </span>
@@ -67,7 +88,20 @@ async function onDelete() {
     </div>
 
     <div class="actions">
-      <button class="complete" :disabled="completing || deleting" @click="onComplete">
+      <button
+        v-if="isActive"
+        class="edit"
+        :disabled="completing || deleting"
+        @click="editing = true"
+      >
+        Edit
+      </button>
+      <button
+        v-if="isActive"
+        class="complete"
+        :disabled="completing || deleting"
+        @click="onComplete"
+      >
         {{ completing ? '…' : 'Complete' }}
       </button>
       <button class="delete" :disabled="completing || deleting" @click="onDelete" aria-label="Delete quest">
@@ -115,6 +149,7 @@ button {
   cursor: pointer;
   border: 1px solid #2a4dd0;
 }
+.edit { background: transparent; color: #cfe3ff; border-color: #2a4dd0; }
 .complete { background: linear-gradient(180deg, #2f6bff, #1d3fb8); color: #fff; border: none; }
 .delete { background: transparent; color: #ff8080; border-color: #5a2740; }
 button:hover:not(:disabled) { filter: brightness(1.1); }

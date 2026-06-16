@@ -66,16 +66,27 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         return c.json({ error: 'No fields to update' }, 400);
       }
 
+      const [existing] = await db
+        .select()
+        .from(quests)
+        .where(and(eq(quests.id, id), eq(quests.userId, userId)));
+
+      if (!existing) return c.json({ error: 'Quest not found' }, 404);
+      // Closed quests are immutable — their XP has already been granted.
+      if (existing.status !== 'active') {
+        return c.json({ error: 'Only active quests can be edited' }, 409);
+      }
+
       const [updated] = await db
         .update(quests)
         .set({
           ...input,
+          // Keep xpReward authoritative when the difficulty changes.
           ...(input.difficulty ? { xpReward: XP_REWARDS[input.difficulty] } : {}),
         })
         .where(and(eq(quests.id, id), eq(quests.userId, userId)))
         .returning();
 
-      if (!updated) return c.json({ error: 'Quest not found' }, 404);
       return c.json(updated);
     },
   )
