@@ -31,6 +31,31 @@ implementing**.
 
 ---
 
+## ⚙️ Agent execution rules (minimize overhead)
+
+The dev environment is already running and being watched by the user. Do NOT
+reproduce verification the user is already doing — it wastes time, tokens, and the
+user's attention.
+
+- **Never start the dev server.** It is always already running in a separate terminal
+  with HMR. Your edits are picked up live. Do not run `pnpm dev`, `nuxi dev`,
+  `pnpm --filter <app> dev`, or any variant — not even to "quickly check" something.
+- **Do not auto-run linters, type-checks, builds, or tests** after editing. The user
+  reviews the diff and tests in the running app. If you genuinely believe a check is
+  required before you can proceed correctly, ASK first — never run it on your own
+  initiative.
+- **No ad-hoc verification commands.** Don't invent one-off shell commands to "confirm"
+  something compiles or runs. If a command is ever needed, prefer the project's defined
+  pnpm/turbo scripts, and only when explicitly asked.
+- **Make the change, then stop.** After editing, briefly state what changed and what the
+  user should verify — then end your turn. Do not loop on self-checking.
+
+Rationale: the feedback loop (running dev server, editor/Volar, manual review) lives
+entirely outside the agent. Re-running any of it inside the agent is pure redundant
+overhead.
+
+---
+
 ## Tech stack
 - **Monorepo:** Turborepo + pnpm workspaces
 - **Frontend:** Nuxt 4 (`app/` directory), Pinia for player state
@@ -68,6 +93,16 @@ packages/shared Zod schemas, leveling logic, shared types — @soloquest/shared
 6. **Migrations are file-based.** Use `drizzle-kit generate` → `migrate`. Never
    `drizzle-kit push` outside throwaway prototyping. Squashing migrations is allowed
    ONLY while there is no real data.
+7. **`auth.ts` is the source for auth columns, not the Drizzle schema.** After editing
+   `apps/api/src/auth.ts`, always re-run the Better Auth CLI first, then `drizzle-kit`
+   (see Commands). `drizzle-kit` only sees the generated schema files, never `auth.ts`.
+
+---
+
+## Identity / user fields
+- Use Better Auth's built-in **`name`** as the player's display name ("hunter name").
+  There is **no `username` field** — do not add one.
+- `xp` and `level` are `input: false` additionalFields — set only by the backend.
 
 ---
 
@@ -82,18 +117,15 @@ Lives in `packages/shared/src/leveling.ts`, used by both api (granting XP) and w
 
 ## Commands
 ```bash
-pnpm dev                                   # run all apps (turbo)
-pnpm --filter web dev                      # frontend only
-pnpm --filter api dev                      # backend only
+# NOTE: do not run the dev server — it is already running (see Agent execution rules).
 
 docker compose up -d                       # start Postgres
 pnpm --filter @soloquest/db db:generate    # generate a migration from schema
 pnpm --filter @soloquest/db db:migrate     # apply migrations
 
-# regenerate Better Auth schema after changing auth config (run from apps/api):
-pnpm dlx @better-auth/cli@latest generate \
-  --config ./src/auth.ts \
-  --output ../../packages/db/src/schema/auth.ts -y
+# regenerate Better Auth schema after changing auth config (run from apps/api),
+# THEN run db:generate + db:migrate:
+pnpm dlx @better-auth/cli@latest generate --config ./src/auth.ts --output ../../packages/db/src/schema/auth.ts -y
 ```
 
 ---
@@ -109,5 +141,5 @@ pnpm dlx @better-auth/cli@latest generate \
 - Confirm the change is in the **current scope** before building it.
 - **Ask before adding a new dependency.**
 - Do not reintroduce removed patterns: custom `users` table, manual password hashing,
-  `uuid` user ids.
+  `uuid` user ids, or a custom `username` field (use the built-in `name`).
 - Keep `packages/db` free of business logic and of `better-auth`.

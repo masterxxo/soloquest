@@ -8,6 +8,13 @@
       "when": 1781592561657,
       "tag": "0000_stormy_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781593792402,
+      "tag": "0001_gray_galactus",
+      "breakpoints": true
     }
   ]
 }

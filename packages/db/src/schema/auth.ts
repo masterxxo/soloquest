@@ -19,7 +19,6 @@ export const user = pgTable("user", {
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
-  username: text("username").notNull(),
   xp: integer("xp").default(0),
   level: integer("level").default(1),
 });

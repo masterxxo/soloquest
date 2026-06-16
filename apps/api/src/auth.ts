@@ -4,10 +4,11 @@ import { db } from '@soloquest/db';
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg' }),
+  // Proxied auth calls keep the web Origin header, so trust it (else "invalid origin").
+  trustedOrigins: [process.env.WEB_ORIGIN ?? 'http://localhost:3000'],
   emailAndPassword: { enabled: true },
   user: {
     additionalFields: {
-      username: { type: 'string', required: true },
       xp: { type: 'number', defaultValue: 0, input: false },
       level: { type: 'number', defaultValue: 1, input: false },
     },
