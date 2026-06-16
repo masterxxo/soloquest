@@ -16,6 +16,7 @@
     "@hono/zod-validator": "^0.8.0",
     "@soloquest/db": "workspace:*",
     "@soloquest/shared": "workspace:*",
+    "better-auth": "^1.6.18",
     "hono": "^4.12.25"
   }
 }
