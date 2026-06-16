@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import { db, quests, user as userTable } from '@soloquest/db';
 import {
@@ -8,20 +7,17 @@ import {
   levelFromTotalXp,
   createQuestSchema,
   updateQuestSchema,
+  questIdParamSchema,
+  questListQuerySchema,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
-
-const idParamSchema = z.object({ id: z.string().uuid() });
-const listQuerySchema = z.object({
-  status: z.enum(['active', 'completed', 'failed']).optional(),
-});
 
 // Chained so Hono RPC can infer the route types end-to-end.
 export const questsRouter = new Hono<{ Variables: Variables }>()
   .use('*', requireAuth)
 
   // List the current user's quests, optionally filtered by status.
-  .get('/', zValidator('query', listQuerySchema), async (c) => {
+  .get('/', zValidator('query', questListQuerySchema), async (c) => {
     const userId = c.get('user')!.id;
     const { status } = c.req.valid('query');
     const rows = await db
@@ -59,7 +55,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   // server-side so it stays authoritative. Status is not editable here (see /complete).
   .patch(
     '/:id',
-    zValidator('param', idParamSchema),
+    zValidator('param', questIdParamSchema),
     zValidator('json', updateQuestSchema),
     async (c) => {
       const userId = c.get('user')!.id;
@@ -85,7 +81,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   )
 
   // Delete, scoped to the owner.
-  .delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  .delete('/:id', zValidator('param', questIdParamSchema), async (c) => {
     const userId = c.get('user')!.id;
     const { id } = c.req.valid('param');
     const [deleted] = await db
@@ -98,7 +94,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   })
 
   // Complete a quest and grant XP atomically (server-authoritative).
-  .post('/:id/complete', zValidator('param', idParamSchema), async (c) => {
+  .post('/:id/complete', zValidator('param', questIdParamSchema), async (c) => {
     const sessionUser = c.get('user')!;
     const { id } = c.req.valid('param');
 

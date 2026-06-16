@@ -12,3 +12,9 @@ export type CreateQuestInput = z.infer<typeof createQuestSchema>;
 export const updateQuestSchema = createQuestSchema.partial();
 
 export type UpdateQuestInput = z.infer<typeof updateQuestSchema>;
+
+export const questIdParamSchema = z.object({ id: z.string().uuid() });
+
+export const questListQuerySchema = z.object({
+  status: z.enum(["active", "completed", "failed"]).optional(),
+});
