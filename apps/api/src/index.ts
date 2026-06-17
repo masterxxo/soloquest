@@ -21,7 +21,7 @@ app.get('/health', async (c) => {
 // Mount via chaining so AppType carries the quest route types for Hono RPC.
 const routes = app.route('/quests', questsRouter);
 
-const port = Number(process.env.port ?? 3001);
+const port = Number(process.env.PORT ?? 3001);
 serve({ fetch: app.fetch, port });
 console.log(`API → http://localhost:${port}/api/health`);
 
