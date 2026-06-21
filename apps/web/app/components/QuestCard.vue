@@ -117,9 +117,9 @@ async function onDelete() {
   gap: 0.9rem;
   align-items: flex-start;
   padding: 1rem;
-  background: rgba(8, 16, 36, 0.7);
-  border: 1px solid #213663;
-  border-radius: 10px;
+  background: rgba(14, 9, 30, 0.6);
+  border: 1px solid #2a2050;
+  border-radius: 0;
 }
 .rank {
   flex: 0 0 auto;
@@ -130,27 +130,27 @@ async function onDelete() {
   font-weight: 800;
   font-size: 1rem;
   border: 1px solid;
-  border-radius: 8px;
-  background: #060c1c;
+  border-radius: 0;
+  background: #0a0618;
   text-shadow: 0 0 8px currentColor;
 }
 .body { flex: 1 1 auto; min-width: 0; }
-h3 { margin: 0; font-size: 1rem; color: #eaf2ff; }
-.desc { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: #9bb4e6; }
-.meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8fa9d8; }
-.xp { color: #5b8bff; font-weight: 600; }
+h3 { margin: 0; font-size: 1rem; color: #ece8fb; }
+.desc { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: #8174b8; }
+.meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8174b8; }
+.xp { color: #9c7cff; font-weight: 600; }
 .err { margin: 0.4rem 0 0; font-size: 0.75rem; color: #ff8080; }
 .actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
 button {
   padding: 0.45rem 0.7rem;
-  border-radius: 6px;
+  border-radius: 0;
   font-weight: 600;
   font-size: 0.8rem;
   cursor: pointer;
-  border: 1px solid #2a4dd0;
+  border: 1px solid #2a2050;
 }
-.edit { background: transparent; color: #cfe3ff; border-color: #2a4dd0; }
-.complete { background: linear-gradient(180deg, #2f6bff, #1d3fb8); color: #fff; border: none; }
+.edit { background: transparent; color: #d0c8f8; border-color: #2a2050; }
+.complete { background: linear-gradient(180deg, #6a4fd8, #4a35a8); color: #fff; border: none; }
 .delete { background: transparent; color: #ff8080; border-color: #5a2740; }
 button:hover:not(:disabled) { filter: brightness(1.1); }
 button:disabled { opacity: 0.55; cursor: not-allowed; }

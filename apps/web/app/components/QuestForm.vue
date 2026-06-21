@@ -135,24 +135,24 @@ async function onSubmit() {
   flex-direction: column;
   gap: 0.7rem;
   padding: 1rem;
-  background: rgba(8, 16, 36, 0.7);
-  border: 1px solid #213663;
-  border-radius: 10px;
+  background: rgba(14, 9, 30, 0.6);
+  border: 1px solid #2a2050;
+  border-radius: 0;
 }
-.tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #5b8bff; }
+.tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #7c5ce8; }
 input, textarea, select {
   padding: 0.55rem 0.7rem;
-  background: #060c1c;
-  border: 1px solid #29407e;
-  border-radius: 6px;
-  color: #eaf2ff;
+  background: #0a0618;
+  border: 1px solid #2a2050;
+  border-radius: 0;
+  color: #ece8fb;
   font: inherit;
   font-size: 0.9rem;
   outline: none;
 }
 input:focus, textarea:focus, select:focus {
-  border-color: #5b8bff;
-  box-shadow: 0 0 0 2px rgba(91, 139, 255, 0.25);
+  border-color: #7c5ce8;
+  box-shadow: 0 0 0 2px rgba(124, 92, 232, 0.3);
 }
 textarea { resize: vertical; }
 .row { display: flex; gap: 0.7rem; }
@@ -162,26 +162,26 @@ textarea { resize: vertical; }
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.75rem;
-  color: #9bb4e6;
+  color: #8174b8;
 }
 .err { margin: 0; font-size: 0.78rem; color: #ff8080; }
 .form-actions { display: flex; gap: 0.6rem; }
 button {
   padding: 0.6rem;
   flex: 1;
-  background: linear-gradient(180deg, #2f6bff, #1d3fb8);
+  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   color: #fff;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 0 14px rgba(56, 120, 255, 0.45);
+  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
 }
 button.cancel {
   flex: 0 0 auto;
   background: transparent;
-  border: 1px solid #2a4dd0;
-  color: #cfe3ff;
+  border: 1px solid #2a2050;
+  color: #d0c8f8;
   box-shadow: none;
 }
 button:disabled { opacity: 0.6; cursor: not-allowed; }

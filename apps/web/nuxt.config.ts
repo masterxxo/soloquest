@@ -2,7 +2,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  modules: ['@pinia/nuxt'],
+  modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss'],
   runtimeConfig: { public: { apiBase: 'http://localhost:3001'}},
   nitro: {
     // h3 strips the '/api' mount prefix before forwarding, so target must re-add it
