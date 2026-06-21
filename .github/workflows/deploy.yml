@@ -1,0 +1,15 @@
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify deploy
+        run: |
+          curl -X GET "https://coolify.rogson.dev/api/v1/deploy?uuid=d7qyzj6v92tuzyycx1wv74p1&force=false" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            -H "Content-Type: application/json"
