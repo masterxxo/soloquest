@@ -8,8 +8,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Coolify deploy
+      - name: Trigger Coolify deploy — web
         run: |
           curl -X GET "https://coolify.rogson.dev/api/v1/deploy?uuid=d7qyzj6v92tuzyycx1wv74p1&force=false" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            -H "Content-Type: application/json"
+
+      - name: Trigger Coolify deploy — api
+        run: |
+          curl -X GET "https://coolify.rogson.dev/api/v1/deploy?uuid=q8o95m9fk3x4tdyg94f0769t&force=false" \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
             -H "Content-Type: application/json"
