@@ -71,6 +71,14 @@ const panelTitle = computed(() => (activePanel.value ? PANEL_TITLES[activePanel.
 function openPanel(panel: Panel) { activePanel.value = panel; }
 function closePanel() { activePanel.value = null; }
 
+// Lock background scroll while any panel overlay is open (client-only DOM access).
+watch(activePanel, (panel) => {
+  if (import.meta.client) document.body.style.overflow = panel ? 'hidden' : '';
+});
+onBeforeUnmount(() => {
+  if (import.meta.client) document.body.style.overflow = '';
+});
+
 // XP fill for the top-bar bar, clamped to [0, 100].
 const xpPercent = computed(() => {
   const { current, needed } = player.progress;
