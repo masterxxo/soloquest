@@ -5,7 +5,8 @@ withDefaults(
   defineProps<{ label: string; x: string; y: string; disabled?: boolean }>(),
   { disabled: false },
 );
-const emit = defineEmits<{ select: [] }>();
+// Forwards the click event so the opener can grow the panel from the icon's spot.
+const emit = defineEmits<{ select: [event: MouseEvent] }>();
 </script>
 
 <template>
@@ -15,7 +16,7 @@ const emit = defineEmits<{ select: [] }>();
     :style="{ left: x, top: y }"
     type="button"
     :disabled="disabled"
-    @click="emit('select')"
+    @click="emit('select', $event)"
   >
     <span class="hub-box"><slot /></span>
     <span class="hub-label">{{ label }}</span>

@@ -12,8 +12,11 @@ defineProps<{ percent: number }>();
 <style scoped>
 .bar {
   height: 10px;
-  background: #0a0618;
-  border: 1px solid #2a2050;
+  /* Tinted track + glowing outline so the bar reads as a defined element even
+     when empty (a near-black track vanished against the dark header). */
+  background: rgba(124, 92, 232, 0.12);
+  border: 1px solid rgba(124, 92, 232, 0.55);
+  box-shadow: inset 0 0 6px rgba(124, 92, 232, 0.2), 0 0 5px rgba(124, 92, 232, 0.3);
   overflow: hidden;
 }
 .fill {

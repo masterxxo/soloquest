@@ -68,7 +68,19 @@ const PANEL_TITLES: Record<Panel, string> = {
   glossary: 'Glossary',
 };
 const panelTitle = computed(() => (activePanel.value ? PANEL_TITLES[activePanel.value] : ''));
-function openPanel(panel: Panel) { activePanel.value = panel; }
+
+// Viewport point the panel grows out of — the centre of the icon that opened it.
+const panelOrigin = ref<{ x: number; y: number } | null>(null);
+function openPanel(panel: Panel, event?: MouseEvent) {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    panelOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  } else {
+    panelOrigin.value = null;
+  }
+  activePanel.value = panel;
+}
 function closePanel() { activePanel.value = null; }
 
 // XP fill for the Status panel bar, clamped to [0, 100].
@@ -86,14 +98,14 @@ const xpPercent = computed(() => {
     <HubCharacter />
 
     <!-- Hub icons -->
-    <HubIcon label="Status" x="15%" y="32%" @select="openPanel('status')">
+    <HubIcon label="Status" x="15%" y="32%" @select="openPanel('status', $event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="8" r="4" />
         <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
       </svg>
     </HubIcon>
 
-    <HubIcon label="Quests" x="15%" y="62%" @select="openPanel('quests')">
+    <HubIcon label="Quests" x="15%" y="62%" @select="openPanel('quests', $event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <rect x="5" y="3" width="14" height="18" rx="2" />
         <line x1="8.5" y1="8" x2="15.5" y2="8" />
@@ -102,14 +114,14 @@ const xpPercent = computed(() => {
       </svg>
     </HubIcon>
 
-    <HubIcon label="Campaigns" x="85%" y="32%" @select="openPanel('campaigns')">
+    <HubIcon label="Campaigns" x="85%" y="32%" @select="openPanel('campaigns', $event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3l7 2.5V11c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V5.5L12 3z" />
         <path d="M9 12l2 2 4-4" />
       </svg>
     </HubIcon>
 
-    <HubIcon label="Glossary" x="85%" y="62%" @select="openPanel('glossary')">
+    <HubIcon label="Glossary" x="85%" y="62%" @select="openPanel('glossary', $event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 6c-1.5-1.2-3.5-1.8-6-1.8V18c2.5 0 4.5.6 6 1.8" />
         <path d="M12 6c1.5-1.2 3.5-1.8 6-1.8V18c-2.5 0-4.5.6-6 1.8" />
@@ -125,7 +137,7 @@ const xpPercent = computed(() => {
     </HubIcon>
 
     <!-- Hub panel overlay -->
-    <HubPanel v-if="activePanel" :title="panelTitle" @close="closePanel">
+    <HubPanel v-if="activePanel" :title="panelTitle" :origin="panelOrigin" @close="closePanel">
       <!-- Status -->
       <template v-if="activePanel === 'status'">
         <div class="stat-row"><span>Name</span><span>{{ player.name ?? 'Hunter' }}</span></div>

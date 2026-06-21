@@ -1,21 +1,39 @@
 <script setup lang="ts">
 // Modal hub panel: dark frame with an animated energy border, decorative corners,
 // a fixed head and an internally-scrolling body (passed via the default slot).
-defineProps<{ title: string }>();
+const props = defineProps<{ title: string; origin?: { x: number; y: number } | null }>();
 const emit = defineEmits<{ close: [] }>();
 
-// Lock background scroll for the lifetime of the (v-if'd) panel.
+// Local visibility drives the open/close transition. The parent mounts us (open);
+// on close we play the leave animation first and only emit `close` afterwards, so
+// the parent's unmount doesn't cut it off (and the slot content stays put meanwhile).
+const shown = ref(false);
 onMounted(() => {
+  shown.value = true; // false → true triggers the enter (grow) transition
   if (import.meta.client) document.body.style.overflow = 'hidden';
 });
 onBeforeUnmount(() => {
   if (import.meta.client) document.body.style.overflow = '';
 });
+function requestClose() {
+  shown.value = false; // triggers the leave (shrink) transition
+}
+
+// The panel is flex-centred, so its final centre is the viewport centre. To make it
+// grow from / shrink to the opening icon, the hidden state translates it by
+// (origin - centre) and scales it down; the transition eases to/from centre.
+const originStyle = computed(() => {
+  if (!import.meta.client || !props.origin) return {};
+  const dx = props.origin.x - window.innerWidth / 2;
+  const dy = props.origin.y - window.innerHeight / 2;
+  return { '--sq-dx': `${dx}px`, '--sq-dy': `${dy}px` };
+});
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="overlay" @click.self="emit('close')">
+    <Transition name="sq-overlay" @after-leave="emit('close')">
+      <div v-if="shown" class="overlay" @click.self="requestClose">
       <!-- Fractal-noise displacement filter: warps the border energy into an
            irregular, writhing shape rather than a clean rectangle outline. -->
       <svg class="sq-filter" aria-hidden="true" focusable="false">
@@ -51,22 +69,23 @@ onBeforeUnmount(() => {
         </filter>
       </svg>
 
-      <div class="panel">
-        <span class="corner corner-tl" />
-        <span class="corner corner-tr" />
-        <span class="corner corner-bl" />
-        <span class="corner corner-br" />
+        <div class="panel" :style="originStyle">
+          <span class="corner corner-tl" />
+          <span class="corner corner-tr" />
+          <span class="corner corner-bl" />
+          <span class="corner corner-br" />
 
-        <div class="panel-head">
-          <span class="panel-title">{{ title }}</span>
-          <button class="panel-close" type="button" @click="emit('close')">✕ Close</button>
-        </div>
+          <div class="panel-head">
+            <span class="panel-title">{{ title }}</span>
+            <button class="panel-close" type="button" @click="requestClose">✕ Close</button>
+          </div>
 
-        <div class="panel-scroll">
-          <div class="panel-body"><slot /></div>
+          <div class="panel-scroll">
+            <div class="panel-body"><slot /></div>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -212,6 +231,26 @@ onBeforeUnmount(() => {
 .panel-close:hover { color: #d0c8f8; }
 .panel-body { display: flex; flex-direction: column; gap: 1.1rem; }
 
+/* Open/close: the overlay backdrop fades while the panel grows from / shrinks to
+   the opening icon. One transition on the overlay drives both — the panel scale via
+   a descendant selector — so the leave isn't cut off by the parent's unmount.
+   The hidden state translates the shrunk panel onto the click point (origin). */
+.sq-overlay-enter-active { transition: opacity 0.28s ease; }
+.sq-overlay-leave-active { transition: opacity 0.26s ease; }
+.sq-overlay-enter-from,
+.sq-overlay-leave-to { opacity: 0; }
+
+.sq-overlay-enter-active .panel {
+  transition: transform 0.34s cubic-bezier(0.18, 0.82, 0.25, 1);
+}
+.sq-overlay-leave-active .panel {
+  transition: transform 0.26s cubic-bezier(0.5, 0, 0.75, 0.3);
+}
+.sq-overlay-enter-from .panel,
+.sq-overlay-leave-to .panel {
+  transform: translate(var(--sq-dx, 0px), var(--sq-dy, 0px)) scale(0.05);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel::before,
   .panel::after {
@@ -219,6 +258,16 @@ onBeforeUnmount(() => {
   }
   .panel::after {
     opacity: 0;
+  }
+  .sq-overlay-enter-active,
+  .sq-overlay-leave-active,
+  .sq-overlay-enter-active .panel,
+  .sq-overlay-leave-active .panel {
+    transition: none;
+  }
+  .sq-overlay-enter-from .panel,
+  .sq-overlay-leave-to .panel {
+    transform: none;
   }
 }
 </style>
