@@ -77,7 +77,10 @@ const originStyle = computed(() => {
 
           <div class="panel-head">
             <span class="panel-title">{{ title }}</span>
-            <button class="panel-close" type="button" @click="requestClose">✕ Close</button>
+            <div class="panel-actions">
+              <slot name="actions" />
+              <button class="panel-close" type="button" @click="requestClose">✕ Close</button>
+            </div>
           </div>
 
           <div class="panel-scroll">
@@ -219,6 +222,7 @@ const originStyle = computed(() => {
   margin-bottom: 1.75rem;
 }
 .panel-title { font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: #7c5ce8; }
+.panel-actions { display: flex; align-items: center; gap: 0.6rem; }
 .panel-close {
   background: none;
   border: none;

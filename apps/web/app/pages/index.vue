@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { signOut } from '~/lib/auth-client';
-import { client, type Quest, type CompleteResult } from '~/lib/api-client';
+import {
+  client,
+  type Quest,
+  type CompleteResult,
+  type QuestWithWarnings,
+  type Campaign,
+  type CampaignDetail,
+} from '~/lib/api-client';
 import { usePlayerStore } from '~/stores/player';
 
 // Session stays the source of truth; the store is a projection of session.user.
@@ -20,8 +27,122 @@ const { data: activeQuests, pending, error } = await useAsyncData(
   { server: false, default: () => [] as Quest[] },
 );
 
-function onCreated(quest: Quest) {
-  activeQuests.value = [quest, ...(activeQuests.value ?? [])];
+// Campaigns are fetched client-side too (same per-user, behind-login rationale).
+const { data: campaigns } = await useAsyncData(
+  'campaigns',
+  async () => {
+    const res = await client.api.campaigns.$get();
+    if (!res.ok) return [];
+    return res.json();
+  },
+  { server: false, default: () => [] as Campaign[] },
+);
+
+// null → campaign list view; set → campaign detail view.
+const selectedCampaign = ref<CampaignDetail | null>(null);
+const campaignLoading = ref(false);
+
+async function openCampaign(id: string) {
+  campaignLoading.value = true;
+  try {
+    const res = await client.api.campaigns[':id'].$get({ param: { id } });
+    if (res.ok) selectedCampaign.value = await res.json();
+  } finally {
+    campaignLoading.value = false;
+  }
+}
+function backToCampaignList() { selectedCampaign.value = null; }
+
+const campaignDeadlineLabel = computed(() =>
+  selectedCampaign.value?.deadline
+    ? new Date(selectedCampaign.value.deadline).toLocaleDateString()
+    : null,
+);
+
+const CAMPAIGN_DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
+
+// Inline new-campaign form (kept lightweight; quests have their own QuestForm).
+const showNewCampaignForm = ref(false);
+const campaignTitle = ref('');
+const campaignDifficulty = ref<'E' | 'D' | 'C' | 'B' | 'A' | 'S'>('E');
+const campaignDescription = ref('');
+const campaignDeadline = ref('');
+const creatingCampaign = ref(false);
+
+async function createCampaign() {
+  creatingCampaign.value = true;
+  try {
+    const res = await client.api.campaigns.$post({
+      json: {
+        title: campaignTitle.value,
+        difficulty: campaignDifficulty.value,
+        description: campaignDescription.value || undefined,
+        deadline: campaignDeadline.value ? new Date(campaignDeadline.value) : null,
+      },
+    });
+    if (!res.ok) return;
+    const created = await res.json();
+    // POST returns the row without questCount; a brand-new campaign has 0 quests.
+    campaigns.value = [{ ...created, questCount: 0 }, ...(campaigns.value ?? [])];
+    campaignTitle.value = '';
+    campaignDifficulty.value = 'E';
+    campaignDescription.value = '';
+    campaignDeadline.value = '';
+    showNewCampaignForm.value = false;
+  } finally {
+    creatingCampaign.value = false;
+  }
+}
+
+async function completeCampaign() {
+  if (!selectedCampaign.value) return;
+  const id = selectedCampaign.value.id;
+  const res = await client.api.campaigns[':id'].complete.$post({ param: { id } });
+  if (!res.ok) return;
+  const updated = await res.json();
+  selectedCampaign.value = { ...selectedCampaign.value, status: updated.status, completedAt: updated.completedAt };
+  campaigns.value = (campaigns.value ?? []).map((c) =>
+    c.id === id ? { ...c, status: updated.status, completedAt: updated.completedAt } : c,
+  );
+}
+
+// Handlers for the QuestCards shown inside a campaign's detail view. They keep the
+// selected campaign's quest list in sync (it's separate from activeQuests).
+function onCampaignQuestCompleted(result: CompleteResult) {
+  player.applyProgress(result.player);
+  if (result.leveledUp) showLevelUp(result.player.level);
+  if (!selectedCampaign.value) return;
+  selectedCampaign.value = {
+    ...selectedCampaign.value,
+    quests: selectedCampaign.value.quests.filter((q) => q.id !== result.quest.id),
+  };
+}
+function onCampaignQuestDeleted(id: string) {
+  if (!selectedCampaign.value) return;
+  selectedCampaign.value = {
+    ...selectedCampaign.value,
+    quests: selectedCampaign.value.quests.filter((q) => q.id !== id),
+  };
+}
+function onCampaignQuestUpdated(result: QuestWithWarnings) {
+  if (result.warnings.length) showWarnings(result.warnings);
+  if (!selectedCampaign.value) return;
+  selectedCampaign.value = {
+    ...selectedCampaign.value,
+    // Merge so nested subTasks (absent from the PATCH response) are preserved.
+    quests: selectedCampaign.value.quests.map((q) =>
+      q.id === result.quest.id ? { ...q, ...result.quest } : q,
+    ),
+  };
+}
+
+// New-quest form is toggled from the Quests panel header (hidden by default).
+const showNewQuestForm = ref(false);
+
+function onCreated(result: QuestWithWarnings) {
+  activeQuests.value = [result.quest, ...(activeQuests.value ?? [])];
+  if (result.warnings.length) showWarnings(result.warnings);
+  showNewQuestForm.value = false;
 }
 
 function onCompleted(result: CompleteResult) {
@@ -36,9 +157,24 @@ function onDeleted(id: string) {
   activeQuests.value = (activeQuests.value ?? []).filter((q) => q.id !== id);
 }
 
-function onUpdated(quest: Quest) {
-  activeQuests.value = (activeQuests.value ?? []).map((q) => (q.id === quest.id ? quest : q));
+function onUpdated(result: QuestWithWarnings) {
+  activeQuests.value = (activeQuests.value ?? []).map((q) =>
+    q.id === result.quest.id ? result.quest : q,
+  );
+  if (result.warnings.length) showWarnings(result.warnings);
 }
+
+// Client-side ordering: quests with a deadline first (soonest → latest), then the rest.
+const sortedQuests = computed(() => {
+  const quests = activeQuests.value ?? [];
+  return [...quests].sort((a, b) => {
+    if (a.deadline && b.deadline)
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    if (a.deadline) return -1;
+    if (b.deadline) return 1;
+    return 0;
+  });
+});
 
 // Lightweight "System"-style level-up feedback (no engine animations).
 const levelUpTo = ref<number | null>(null);
@@ -48,7 +184,19 @@ function showLevelUp(level: number) {
   if (levelUpTimer) clearTimeout(levelUpTimer);
   levelUpTimer = setTimeout(() => { levelUpTo.value = null; }, 3500);
 }
-onBeforeUnmount(() => { if (levelUpTimer) clearTimeout(levelUpTimer); });
+// Transient rank-warning toast (server flags quests that out-rank their container).
+const rankWarnings = ref<string[]>([]);
+let warningsTimer: ReturnType<typeof setTimeout> | null = null;
+function showWarnings(warnings: string[]) {
+  rankWarnings.value = warnings;
+  if (warningsTimer) clearTimeout(warningsTimer);
+  warningsTimer = setTimeout(() => { rankWarnings.value = []; }, 4000);
+}
+
+onBeforeUnmount(() => {
+  if (levelUpTimer) clearTimeout(levelUpTimer);
+  if (warningsTimer) clearTimeout(warningsTimer);
+});
 
 const loggingOut = ref(false);
 async function onSignOut() {
@@ -138,6 +286,26 @@ const xpPercent = computed(() => {
 
     <!-- Hub panel overlay -->
     <HubPanel v-if="activePanel" :title="panelTitle" :origin="panelOrigin" @close="closePanel">
+      <!-- Header actions per panel -->
+      <template #actions>
+        <button
+          v-if="activePanel === 'quests'"
+          type="button"
+          class="hdr-btn"
+          @click="showNewQuestForm = !showNewQuestForm"
+        >
+          {{ showNewQuestForm ? '✕ Cancel' : '+ New Quest' }}
+        </button>
+        <template v-else-if="activePanel === 'campaigns'">
+          <button v-if="selectedCampaign" type="button" class="hdr-btn" @click="backToCampaignList">
+            ← Back
+          </button>
+          <button v-else type="button" class="hdr-btn" @click="showNewCampaignForm = !showNewCampaignForm">
+            {{ showNewCampaignForm ? '✕ Cancel' : '+ New Campaign' }}
+          </button>
+        </template>
+      </template>
+
       <!-- Status -->
       <template v-if="activePanel === 'status'">
         <div class="stat-row"><span>Name</span><span>{{ player.name ?? 'Hunter' }}</span></div>
@@ -155,13 +323,13 @@ const xpPercent = computed(() => {
 
       <!-- Quests -->
       <template v-else-if="activePanel === 'quests'">
-        <QuestForm mode="create" @created="onCreated" />
+        <QuestForm v-if="showNewQuestForm" mode="create" @created="onCreated" />
         <div class="quest-list">
           <p v-if="pending" class="hint">Loading quests…</p>
           <p v-else-if="error" class="hint err">Could not load quests.</p>
           <p v-else-if="!activeQuests?.length" class="hint">No active quests. Issue one above.</p>
           <QuestCard
-            v-for="q in activeQuests"
+            v-for="q in sortedQuests"
             :key="q.id"
             :quest="q"
             @completed="onCompleted"
@@ -171,13 +339,88 @@ const xpPercent = computed(() => {
         </div>
       </template>
 
-      <!-- Campaigns / Glossary -->
+      <!-- Campaigns -->
+      <template v-else-if="activePanel === 'campaigns'">
+        <!-- State 1 — campaign list -->
+        <template v-if="!selectedCampaign">
+          <form v-if="showNewCampaignForm" class="campaign-form" @submit.prevent="createCampaign">
+            <p class="tag">[ NEW CAMPAIGN ]</p>
+            <input v-model="campaignTitle" type="text" placeholder="Title" required maxlength="255" />
+            <textarea v-model="campaignDescription" placeholder="Description (optional)" rows="2" />
+            <div class="row">
+              <label>
+                Rank
+                <select v-model="campaignDifficulty">
+                  <option v-for="d in CAMPAIGN_DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
+                </select>
+              </label>
+              <label>
+                Deadline
+                <input v-model="campaignDeadline" type="date" />
+              </label>
+            </div>
+            <button type="submit" :disabled="creatingCampaign">
+              {{ creatingCampaign ? 'Saving…' : 'Create campaign' }}
+            </button>
+          </form>
+
+          <div class="quest-list">
+            <p v-if="!campaigns?.length" class="hint">No campaigns yet. Start one above.</p>
+            <button
+              v-for="c in campaigns"
+              :key="c.id"
+              type="button"
+              class="campaign-card"
+              @click="openCampaign(c.id)"
+            >
+              <span class="rank-badge">{{ c.difficulty }}</span>
+              <span class="campaign-name">{{ c.title }}</span>
+              <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
+            </button>
+          </div>
+        </template>
+
+        <!-- State 2 — campaign detail -->
+        <template v-else>
+          <div class="campaign-detail-head">
+            <span class="rank-badge">{{ selectedCampaign.difficulty }}</span>
+            <h3>{{ selectedCampaign.title }}</h3>
+          </div>
+          <p v-if="selectedCampaign.description" class="desc">{{ selectedCampaign.description }}</p>
+          <p v-if="campaignDeadlineLabel" class="hint">⌛ {{ campaignDeadlineLabel }}</p>
+
+          <button
+            v-if="selectedCampaign.status === 'active'"
+            type="button"
+            class="complete-campaign"
+            @click="completeCampaign"
+          >
+            Complete Campaign
+          </button>
+
+          <div class="quest-list">
+            <p v-if="campaignLoading" class="hint">Loading…</p>
+            <p v-else-if="!selectedCampaign.quests.length" class="hint">No quests in this campaign yet.</p>
+            <QuestCard
+              v-for="q in selectedCampaign.quests"
+              :key="q.id"
+              :quest="q"
+              @completed="onCampaignQuestCompleted"
+              @deleted="onCampaignQuestDeleted"
+              @updated="onCampaignQuestUpdated"
+            />
+          </div>
+        </template>
+      </template>
+
+      <!-- Glossary -->
       <template v-else>
         <p class="coming-soon">— Coming soon —</p>
       </template>
     </HubPanel>
 
     <LevelUpToast :level="levelUpTo" />
+    <RankWarningToast :warnings="rankWarnings" />
   </div>
 </template>
 
@@ -208,4 +451,106 @@ const xpPercent = computed(() => {
 .hint.err { color: #ff8080; }
 
 .coming-soon { margin: 1rem 0; text-align: center; font-size: 0.85rem; color: #4a3d7a; }
+
+/* Campaigns panel */
+.campaign-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem;
+  background: rgba(14, 9, 30, 0.6);
+  border: 1px solid #2a2050;
+}
+.campaign-form .tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #7c5ce8; }
+.campaign-form input,
+.campaign-form textarea,
+.campaign-form select {
+  padding: 0.55rem 0.7rem;
+  background: #0a0618;
+  border: 1px solid #2a2050;
+  color: #ece8fb;
+  font: inherit;
+  font-size: 0.9rem;
+  outline: none;
+}
+.campaign-form input:focus,
+.campaign-form textarea:focus,
+.campaign-form select:focus {
+  border-color: #7c5ce8;
+  box-shadow: 0 0 0 2px rgba(124, 92, 232, 0.3);
+}
+.campaign-form textarea { resize: vertical; }
+.campaign-form .row { display: flex; gap: 0.7rem; }
+.campaign-form .row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: #8174b8;
+}
+.campaign-form button {
+  padding: 0.6rem;
+  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
+}
+.campaign-form button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.campaign-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  background: rgba(14, 9, 30, 0.6);
+  border: 1px solid #2a2050;
+  color: #ece8fb;
+  cursor: pointer;
+}
+.campaign-card:hover { border-color: #7c5ce8; }
+.rank-badge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  font-weight: 800;
+  background: #0a0618;
+  border: 1px solid #6a50c8;
+  color: #c9bcff;
+}
+.campaign-name { flex: 1 1 auto; font-size: 0.95rem; }
+.campaign-count { flex: 0 0 auto; font-size: 0.75rem; color: #8174b8; }
+
+.campaign-detail-head { display: flex; align-items: center; gap: 0.75rem; }
+.campaign-detail-head h3 { margin: 0; font-size: 1.1rem; color: #ece8fb; }
+.desc { margin: 0; font-size: 0.85rem; color: #8174b8; }
+.complete-campaign {
+  align-self: flex-start;
+  padding: 0.55rem 1rem;
+  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
+}
+
+/* Header action buttons (HubPanel #actions slot) */
+.hdr-btn {
+  background: transparent;
+  border: 1px solid #2a2050;
+  color: #d0c8f8;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+.hdr-btn:hover { border-color: #7c5ce8; }
 </style>

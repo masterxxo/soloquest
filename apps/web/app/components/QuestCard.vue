@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { client, type Quest, type CompleteResult } from '~/lib/api-client';
+import { client, type Quest, type CompleteResult, type QuestWithWarnings } from '~/lib/api-client';
 
-const props = defineProps<{ quest: Quest }>();
+const props = withDefaults(
+  defineProps<{ quest: Quest; isSubTask?: boolean }>(),
+  { isSubTask: false },
+);
 const emit = defineEmits<{
   completed: [result: CompleteResult];
   deleted: [id: string];
-  updated: [quest: Quest];
+  updated: [result: QuestWithWarnings];
 }>();
 
 const completing = ref(false);
@@ -16,9 +19,9 @@ const errorMsg = ref<string | null>(null);
 // Only active quests can be edited/completed (mirrors the backend guard).
 const isActive = computed(() => props.quest.status === 'active');
 
-function onUpdated(quest: Quest) {
+function onUpdated(result: QuestWithWarnings) {
   editing.value = false;
-  emit('updated', quest);
+  emit('updated', result);
 }
 
 // Solo Leveling rank colours, E (weakest) → S (strongest).
@@ -64,54 +67,80 @@ async function onDelete() {
 </script>
 
 <template>
-  <QuestForm
-    v-if="editing"
-    mode="edit"
-    :initial="quest"
-    @updated="onUpdated"
-    @cancel="editing = false"
-  />
+  <div class="quest-wrap">
+    <QuestForm
+      v-if="editing"
+      mode="edit"
+      :initial="quest"
+      @updated="onUpdated"
+      @cancel="editing = false"
+    />
 
-  <article v-else class="quest">
-    <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
-      {{ quest.difficulty }}
-    </span>
+    <article v-else class="quest">
+      <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
+        {{ quest.difficulty }}
+      </span>
 
-    <div class="body">
-      <h3>{{ quest.title }}</h3>
-      <p v-if="quest.description" class="desc">{{ quest.description }}</p>
-      <div class="meta">
-        <span class="xp">+{{ quest.xpReward }} XP</span>
-        <span v-if="deadlineLabel" class="deadline">⌛ {{ deadlineLabel }}</span>
+      <div class="body">
+        <h3>{{ quest.title }}</h3>
+        <!-- TODO: resolve campaign/parent names once the campaigns panel can supply them. -->
+        <div v-if="quest.campaignId || quest.parentId" class="rel-meta">
+          <span v-if="quest.campaignId">Campaign: {{ quest.campaignId }}</span>
+          <span v-if="quest.parentId">Sub-task of: {{ quest.parentId }}</span>
+        </div>
+        <p v-if="quest.description" class="desc">{{ quest.description }}</p>
+        <div class="meta">
+          <span class="xp">+{{ quest.xpReward }} XP</span>
+          <span v-if="deadlineLabel" class="deadline">⌛ {{ deadlineLabel }}</span>
+        </div>
+        <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
       </div>
-      <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
-    </div>
 
-    <div class="actions">
-      <button
-        v-if="isActive"
-        class="edit"
-        :disabled="completing || deleting"
-        @click="editing = true"
-      >
-        Edit
-      </button>
-      <button
-        v-if="isActive"
-        class="complete"
-        :disabled="completing || deleting"
-        @click="onComplete"
-      >
-        {{ completing ? '…' : 'Complete' }}
-      </button>
-      <button class="delete" :disabled="completing || deleting" @click="onDelete" aria-label="Delete quest">
-        {{ deleting ? '…' : '✕' }}
-      </button>
+      <div class="actions">
+        <button
+          v-if="isActive"
+          class="edit"
+          :disabled="completing || deleting"
+          @click="editing = true"
+        >
+          Edit
+        </button>
+        <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest. -->
+        <button
+          v-if="isActive && !isSubTask"
+          class="complete"
+          :disabled="completing || deleting"
+          @click="onComplete"
+        >
+          {{ completing ? '…' : 'Complete' }}
+        </button>
+        <button
+          v-if="!isSubTask"
+          class="delete"
+          :disabled="completing || deleting"
+          @click="onDelete"
+          aria-label="Delete quest"
+        >
+          {{ deleting ? '…' : '✕' }}
+        </button>
+      </div>
+    </article>
+
+    <!-- Nested sub-tasks render as the same card with reduced actions. -->
+    <div v-if="quest.subTasks?.length" class="subtasks">
+      <QuestCard
+        v-for="st in quest.subTasks"
+        :key="st.id"
+        :quest="st"
+        is-sub-task
+        @updated="emit('updated', $event)"
+      />
     </div>
-  </article>
+  </div>
 </template>
 
 <style scoped>
+.quest-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
 .quest {
   display: flex;
   gap: 0.9rem;
@@ -136,6 +165,7 @@ async function onDelete() {
 }
 .body { flex: 1 1 auto; min-width: 0; }
 h3 { margin: 0; font-size: 1rem; color: #ece8fb; }
+.rel-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.2rem; font-size: 0.7rem; color: #6a5da0; }
 .desc { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: #8174b8; }
 .meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8174b8; }
 .xp { color: #9c7cff; font-weight: 600; }
@@ -154,4 +184,14 @@ button {
 .delete { background: transparent; color: #ff8080; border-color: #5a2740; }
 button:hover:not(:disabled) { filter: brightness(1.1); }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Nested sub-tasks: indented and dimmed slightly to read as children. */
+.subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-left: 1.25rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid #2a2050;
+}
 </style>

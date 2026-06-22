@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { client, type Quest } from '~/lib/api-client';
+import { client, type Quest, type Campaign, type QuestWithWarnings } from '~/lib/api-client';
 import { XP_REWARDS } from '@soloquest/shared';
 
 const props = withDefaults(
   defineProps<{ mode?: 'create' | 'edit'; initial?: Quest | null }>(),
   { mode: 'create', initial: null },
 );
-const emit = defineEmits<{ created: [quest: Quest]; updated: [quest: Quest]; cancel: [] }>();
+const emit = defineEmits<{
+  created: [result: QuestWithWarnings];
+  updated: [result: QuestWithWarnings];
+  cancel: [];
+}>();
 
 const DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
 type Difficulty = (typeof DIFFICULTIES)[number];
@@ -15,8 +19,20 @@ const title = ref('');
 const description = ref('');
 const difficulty = ref<Difficulty>('E');
 const deadline = ref(''); // yyyy-mm-dd from <input type="date">
+const campaignId = ref(''); // '' = None (sent as null)
+const parentId = ref(''); // '' = None (sent as null)
 const submitting = ref(false);
 const errorMsg = ref<string | null>(null);
+// Rank warnings from the last server response (non-blocking; shown under difficulty).
+const localWarnings = ref<string[]>([]);
+
+// Options for the two relation selects, fetched client-side on mount.
+const campaigns = ref<Campaign[]>([]);
+const activeQuests = ref<Quest[]>([]);
+// In edit mode a quest can't be its own parent.
+const parentChoices = computed(() =>
+  activeQuests.value.filter((q) => props.mode !== 'edit' || q.id !== props.initial?.id),
+);
 
 // XP reward for the selected rank — read from shared, never hardcoded.
 const xpForSelected = computed(() => XP_REWARDS[difficulty.value]);
@@ -24,6 +40,15 @@ const xpForSelected = computed(() => XP_REWARDS[difficulty.value]);
 function toDateInput(iso: string) {
   return new Date(iso).toISOString().slice(0, 10);
 }
+
+onMounted(async () => {
+  const [cRes, qRes] = await Promise.all([
+    client.api.campaigns.$get(),
+    client.api.quests.$get({ query: { status: 'active' } }),
+  ]);
+  if (cRes.ok) campaigns.value = await cRes.json();
+  if (qRes.ok) activeQuests.value = await qRes.json();
+});
 
 // Prefill from `initial` (edit mode); re-syncs if the target quest changes.
 watch(
@@ -33,6 +58,8 @@ watch(
     description.value = q?.description ?? '';
     difficulty.value = q?.difficulty ?? 'E';
     deadline.value = q?.deadline ? toDateInput(q.deadline) : '';
+    campaignId.value = q?.campaignId ?? '';
+    parentId.value = q?.parentId ?? '';
   },
   { immediate: true },
 );
@@ -46,29 +73,44 @@ async function onCreate() {
       // Date or null (empty = no deadline). hc serialises the Date to ISO; null stays
       // null. Never send "" — z.coerce.date() would choke on it.
       deadline: deadline.value ? new Date(deadline.value) : null,
+      campaignId: campaignId.value || null,
+      parentId: parentId.value || null,
     },
   });
   if (!res.ok) {
     errorMsg.value = 'Could not create quest. Check the fields and try again.';
     return;
   }
-  emit('created', await res.json());
+  const result = await res.json();
+  localWarnings.value = result.warnings;
+  emit('created', result);
   title.value = '';
   description.value = '';
   difficulty.value = 'E';
   deadline.value = '';
+  campaignId.value = '';
+  parentId.value = '';
 }
 
 async function onEdit() {
   const initial = props.initial!;
   // Send only changed fields. xpReward/status are never sent — the server owns them.
-  const changes: { title?: string; description?: string; difficulty?: Difficulty; deadline?: Date | null } = {};
+  const changes: {
+    title?: string;
+    description?: string;
+    difficulty?: Difficulty;
+    deadline?: Date | null;
+    campaignId?: string | null;
+    parentId?: string | null;
+  } = {};
   if (title.value !== initial.title) changes.title = title.value;
   if (description.value !== (initial.description ?? '')) changes.description = description.value;
   if (difficulty.value !== initial.difficulty) changes.difficulty = difficulty.value;
   const initialDeadline = initial.deadline ? toDateInput(initial.deadline) : '';
   // Empty now → null (clear it); set/changed → Date; unchanged → omit.
   if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
+  if (campaignId.value !== (initial.campaignId ?? '')) changes.campaignId = campaignId.value || null;
+  if (parentId.value !== (initial.parentId ?? '')) changes.parentId = parentId.value || null;
 
   if (Object.keys(changes).length === 0) {
     emit('cancel');
@@ -81,7 +123,9 @@ async function onEdit() {
       res.status === 409 ? 'This quest can no longer be edited.' : 'Could not save changes.';
     return;
   }
-  emit('updated', await res.json());
+  const result = await res.json();
+  localWarnings.value = result.warnings;
+  emit('updated', result);
 }
 
 async function onSubmit() {
@@ -113,6 +157,25 @@ async function onSubmit() {
       <label>
         Deadline
         <input v-model="deadline" type="date" />
+      </label>
+    </div>
+
+    <p v-for="(w, i) in localWarnings" :key="i" class="rank-warning">⚠ {{ w }}</p>
+
+    <div class="row">
+      <label>
+        Campaign
+        <select v-model="campaignId">
+          <option value="">None</option>
+          <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.title }}</option>
+        </select>
+      </label>
+      <label>
+        Parent quest
+        <select v-model="parentId">
+          <option value="">None</option>
+          <option v-for="q in parentChoices" :key="q.id" :value="q.id">{{ q.title }}</option>
+        </select>
       </label>
     </div>
 
@@ -164,6 +227,7 @@ textarea { resize: vertical; }
   font-size: 0.75rem;
   color: #8174b8;
 }
+.rank-warning { margin: 0; font-size: 0.78rem; color: #f0b429; }
 .err { margin: 0; font-size: 0.78rem; color: #ff8080; }
 .form-actions { display: flex; gap: 0.6rem; }
 button {
