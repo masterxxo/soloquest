@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq } from 'drizzle-orm';
-import { db, quests, user as userTable } from '@soloquest/db';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { db, quests, campaigns, user as userTable } from '@soloquest/db';
 import {
   XP_REWARDS,
   levelFromTotalXp,
+  compareDifficulty,
+  type Difficulty,
   createQuestSchema,
   updateQuestSchema,
   questIdParamSchema,
@@ -12,23 +14,64 @@ import {
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 
+// Non-blocking rank sanity check: a quest/sub-task shouldn't out-rank its container.
+// Returns human-readable warnings; it never rejects the write.
+async function buildRankWarnings(
+  userId: string,
+  difficulty: Difficulty,
+  campaignId?: string | null,
+  parentId?: string | null,
+): Promise<string[]> {
+  const warnings: string[] = [];
+
+  if (campaignId) {
+    const [campaign] = await db
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)));
+    if (campaign && compareDifficulty(difficulty, campaign.difficulty) > 0) {
+      warnings.push(
+        `Quest rank (${difficulty}) exceeds Campaign rank (${campaign.difficulty})`,
+      );
+    }
+  }
+
+  if (parentId) {
+    const [parent] = await db
+      .select()
+      .from(quests)
+      .where(and(eq(quests.id, parentId), eq(quests.userId, userId)));
+    if (parent && compareDifficulty(difficulty, parent.difficulty) > 0) {
+      warnings.push(
+        `Sub-task rank (${difficulty}) exceeds Quest rank (${parent.difficulty})`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
 // Chained so Hono RPC can infer the route types end-to-end.
 export const questsRouter = new Hono<{ Variables: Variables }>()
   .use('*', requireAuth)
 
-  // List the current user's quests, optionally filtered by status.
+  // List the current user's quests. Optional filters: status, parentId
+  // ("null" → top-level only, a uuid → that quest's sub-tasks). include=subTasks
+  // nests each quest's sub-tasks under it.
   .get('/', zValidator('query', questListQuerySchema), async (c) => {
     const userId = c.get('user')!.id;
-    const { status } = c.req.valid('query');
-    const rows = await db
-      .select()
-      .from(quests)
-      .where(
-        status
-          ? and(eq(quests.userId, userId), eq(quests.status, status))
-          : eq(quests.userId, userId),
-      )
-      .orderBy(desc(quests.createdAt));
+    const { status, parentId, include } = c.req.valid('query');
+
+    const conditions = [eq(quests.userId, userId)];
+    if (status) conditions.push(eq(quests.status, status));
+    if (parentId === 'null') conditions.push(isNull(quests.parentId));
+    else if (parentId) conditions.push(eq(quests.parentId, parentId));
+
+    const rows = await db.query.quests.findMany({
+      where: and(...conditions),
+      orderBy: desc(quests.createdAt),
+      ...(include === 'subTasks' ? { with: { subTasks: true } } : {}),
+    });
     return c.json(rows);
   })
 
@@ -46,9 +89,18 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         difficulty: input.difficulty,
         xpReward: XP_REWARDS[input.difficulty],
         deadline: input.deadline,
+        campaignId: input.campaignId,
+        parentId: input.parentId,
       })
       .returning();
-    return c.json(created, 201);
+
+    const warnings = await buildRankWarnings(
+      userId,
+      input.difficulty,
+      input.campaignId,
+      input.parentId,
+    );
+    return c.json({ quest: created, warnings }, 201);
   })
 
   // Partial edit, scoped to the owner. If difficulty changes, xpReward is recomputed
@@ -87,7 +139,14 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .where(and(eq(quests.id, id), eq(quests.userId, userId)))
         .returning();
 
-      return c.json(updated);
+      // Warn against the effective difficulty and any container set in this request.
+      const warnings = await buildRankWarnings(
+        userId,
+        input.difficulty ?? existing.difficulty,
+        input.campaignId,
+        input.parentId,
+      );
+      return c.json({ quest: updated, warnings });
     },
   )
 

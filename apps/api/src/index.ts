@@ -4,6 +4,7 @@ import { db }  from '@soloquest/db';
 import { auth } from './auth';
 import { sessionMiddleware, type Variables } from './middleware/auth';
 import { questsRouter } from './routes/quests';
+import { campaignsRouter } from './routes/campaigns';
 
 const app = new Hono<{ Variables: Variables }>().basePath('/api');
 
@@ -18,8 +19,10 @@ app.get('/health', async (c) => {
   return c.json({ ok: true });
 });
 
-// Mount via chaining so AppType carries the quest route types for Hono RPC.
-const routes = app.route('/quests', questsRouter);
+// Mount via chaining so AppType carries the route types for Hono RPC.
+const routes = app
+  .route('/quests', questsRouter)
+  .route('/campaigns', campaignsRouter);
 
 const port = Number(process.env.PORT ?? 3001);
 serve({ fetch: app.fetch, port });

@@ -15,6 +15,13 @@
       "when": 1781593792402,
       "tag": "0001_gray_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782121147333,
+      "tag": "0002_classy_william_stryker",
+      "breakpoints": true
     }
   ]
 }
