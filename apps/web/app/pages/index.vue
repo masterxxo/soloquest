@@ -61,6 +61,16 @@ const campaignDeadlineLabel = computed(() =>
 
 const CAMPAIGN_DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
 
+// Resolve a quest's campaignId to a campaign name (from the loaded list) for display.
+const campaignNameById = computed(() => {
+  const map = new Map<string, string>();
+  for (const c of campaigns.value ?? []) map.set(c.id, c.title);
+  return map;
+});
+function campaignName(id: string | null | undefined): string | null {
+  return id ? campaignNameById.value.get(id) ?? null : null;
+}
+
 // Inline new-campaign form (kept lightweight; quests have their own QuestForm).
 const showNewCampaignForm = ref(false);
 const campaignTitle = ref('');
@@ -231,6 +241,19 @@ function openPanel(panel: Panel, event?: MouseEvent) {
 }
 function closePanel() { activePanel.value = null; }
 
+// The new-quest form lives in its own panel, stacked over the Quests panel.
+const newQuestOrigin = ref<{ x: number; y: number } | null>(null);
+function openNewQuestForm(event?: MouseEvent) {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    newQuestOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  } else {
+    newQuestOrigin.value = null;
+  }
+  showNewQuestForm.value = true;
+}
+
 // XP fill for the Status panel bar, clamped to [0, 100].
 const xpPercent = computed(() => {
   const { current, needed } = player.progress;
@@ -292,9 +315,9 @@ const xpPercent = computed(() => {
           v-if="activePanel === 'quests'"
           type="button"
           class="hdr-btn"
-          @click="showNewQuestForm = !showNewQuestForm"
+          @click="openNewQuestForm"
         >
-          {{ showNewQuestForm ? '✕ Cancel' : '+ New Quest' }}
+          + New Quest
         </button>
         <template v-else-if="activePanel === 'campaigns'">
           <button v-if="selectedCampaign" type="button" class="hdr-btn" @click="backToCampaignList">
@@ -323,7 +346,6 @@ const xpPercent = computed(() => {
 
       <!-- Quests -->
       <template v-else-if="activePanel === 'quests'">
-        <QuestForm v-if="showNewQuestForm" mode="create" @created="onCreated" />
         <div class="quest-list">
           <p v-if="pending" class="hint">Loading quests…</p>
           <p v-else-if="error" class="hint err">Could not load quests.</p>
@@ -332,6 +354,7 @@ const xpPercent = computed(() => {
             v-for="q in sortedQuests"
             :key="q.id"
             :quest="q"
+            :campaign-name="campaignName(q.campaignId)"
             @completed="onCompleted"
             @deleted="onDeleted"
             @updated="onUpdated"
@@ -417,6 +440,16 @@ const xpPercent = computed(() => {
       <template v-else>
         <p class="coming-soon">— Coming soon —</p>
       </template>
+    </HubPanel>
+
+    <!-- New-quest form in its own panel, stacked over the Quests panel. -->
+    <HubPanel
+      v-if="showNewQuestForm"
+      title="New Quest"
+      :origin="newQuestOrigin"
+      @close="showNewQuestForm = false"
+    >
+      <QuestForm mode="create" @created="onCreated" />
     </HubPanel>
 
     <LevelUpToast :level="levelUpTo" />

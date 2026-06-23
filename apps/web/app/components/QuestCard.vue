@@ -2,8 +2,15 @@
 import { client, type Quest, type CompleteResult, type QuestWithWarnings } from '~/lib/api-client';
 
 const props = withDefaults(
-  defineProps<{ quest: Quest; isSubTask?: boolean }>(),
-  { isSubTask: false },
+  defineProps<{
+    quest: Quest;
+    isSubTask?: boolean;
+    // Resolved by the parent from the campaign list — we never render the raw id.
+    campaignName?: string | null;
+    // For a sub-task, the title of the quest it belongs to.
+    parentName?: string | null;
+  }>(),
+  { isSubTask: false, campaignName: null, parentName: null },
 );
 const emit = defineEmits<{
   completed: [result: CompleteResult];
@@ -83,10 +90,11 @@ async function onDelete() {
 
       <div class="body">
         <h3>{{ quest.title }}</h3>
-        <!-- TODO: resolve campaign/parent names once the campaigns panel can supply them. -->
-        <div v-if="quest.campaignId || quest.parentId" class="rel-meta">
-          <span v-if="quest.campaignId">Campaign: {{ quest.campaignId }}</span>
-          <span v-if="quest.parentId">Sub-task of: {{ quest.parentId }}</span>
+        <!-- Names only — the raw id is never shown; the line is hidden until the
+             parent resolves a name. -->
+        <div v-if="campaignName || parentName" class="rel-meta">
+          <span v-if="campaignName">Campaign: {{ campaignName }}</span>
+          <span v-if="parentName">Sub-task of: {{ parentName }}</span>
         </div>
         <p v-if="quest.description" class="desc">{{ quest.description }}</p>
         <div class="meta">
@@ -133,6 +141,7 @@ async function onDelete() {
         :key="st.id"
         :quest="st"
         is-sub-task
+        :parent-name="quest.title"
         @updated="emit('updated', $event)"
       />
     </div>
