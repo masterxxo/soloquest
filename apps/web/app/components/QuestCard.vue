@@ -152,39 +152,48 @@ async function onDelete() {
 .quest-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
 .quest {
   display: flex;
-  gap: 0.9rem;
+  gap: 0.75rem;
   align-items: flex-start;
-  padding: 1rem;
+  padding: 0.6rem 0.8rem;
   background: rgba(14, 9, 30, 0.6);
   border: 1px solid #2a2050;
   border-radius: 0;
 }
 .rank {
   flex: 0 0 auto;
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 1.75rem;
   display: grid;
   place-items: center;
   font-weight: 800;
-  font-size: 1rem;
+  font-size: 0.9rem;
   border: 1px solid;
   border-radius: 0;
   background: #0a0618;
   text-shadow: 0 0 8px currentColor;
 }
 .body { flex: 1 1 auto; min-width: 0; }
-h3 { margin: 0; font-size: 1rem; color: #ece8fb; }
-.rel-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.2rem; font-size: 0.7rem; color: #6a5da0; }
-.desc { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: #8174b8; }
+h3 { margin: 0; font-size: 0.95rem; color: #ece8fb; }
+.rel-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.15rem; font-size: 0.7rem; color: #6a5da0; }
+/* Clamp long descriptions to 2 lines so one quest can't dominate the list. */
+.desc {
+  margin: 0.2rem 0 0.3rem;
+  font-size: 0.85rem;
+  color: #8174b8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8174b8; }
 .xp { color: #9c7cff; font-weight: 600; }
 .err { margin: 0.4rem 0 0; font-size: 0.75rem; color: #ff8080; }
 .actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
 button {
-  padding: 0.45rem 0.7rem;
+  padding: 0.35rem 0.65rem;
   border-radius: 0;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   cursor: pointer;
   border: 1px solid #2a2050;
 }

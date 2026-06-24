@@ -1,7 +1,12 @@
 <script setup lang="ts">
 // Modal hub panel: dark frame with an animated energy border, decorative corners,
 // a fixed head and an internally-scrolling body (passed via the default slot).
-const props = defineProps<{ title: string; origin?: { x: number; y: number } | null }>();
+const props = defineProps<{
+  title: string;
+  origin?: { x: number; y: number } | null;
+  // Panel width override (px). Defaults to the standard 540px frame.
+  maxWidth?: number;
+}>();
 const emit = defineEmits<{ close: [] }>();
 
 // Local visibility drives the open/close transition. The parent mounts us (open);
@@ -23,10 +28,13 @@ function requestClose() {
 // grow from / shrink to the opening icon, the hidden state translates it by
 // (origin - centre) and scales it down; the transition eases to/from centre.
 const originStyle = computed(() => {
-  if (!import.meta.client || !props.origin) return {};
-  const dx = props.origin.x - window.innerWidth / 2;
-  const dy = props.origin.y - window.innerHeight / 2;
-  return { '--sq-dx': `${dx}px`, '--sq-dy': `${dy}px` };
+  const style: Record<string, string> = {};
+  if (props.maxWidth) style['--sq-max-width'] = `${props.maxWidth}px`;
+  if (import.meta.client && props.origin) {
+    style['--sq-dx'] = `${props.origin.x - window.innerWidth / 2}px`;
+    style['--sq-dy'] = `${props.origin.y - window.innerHeight / 2}px`;
+  }
+  return style;
 });
 </script>
 
@@ -109,7 +117,7 @@ const originStyle = computed(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 540px;
+  max-width: var(--sq-max-width, 540px);
   max-height: 88vh;
   /* Visible so the displaced border energy can spill past the frame instead of
      being clipped flat. The frame stays put; only .panel-scroll scrolls. */

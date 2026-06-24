@@ -20,7 +20,9 @@ watchEffect(() => player.hydrate(session.value?.user));
 const { data: activeQuests, pending, error } = await useAsyncData(
   'active-quests',
   async () => {
-    const res = await client.api.quests.$get({ query: { status: 'active' } });
+    const res = await client.api.quests.$get({
+      query: { status: 'active', include: 'subTasks' },
+    });
     if (!res.ok) throw new Error('Failed to load quests');
     return res.json();
   },
@@ -174,16 +176,90 @@ function onUpdated(result: QuestWithWarnings) {
   if (result.warnings.length) showWarnings(result.warnings);
 }
 
-// Client-side ordering: quests with a deadline first (soonest → latest), then the rest.
-const sortedQuests = computed(() => {
-  const quests = activeQuests.value ?? [];
-  return [...quests].sort((a, b) => {
-    if (a.deadline && b.deadline)
-      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-    if (a.deadline) return -1;
-    if (b.deadline) return 1;
-    return 0;
-  });
+// Group top-level quests into day-sections by deadline: an "overdue" bucket first,
+// then dated buckets (soonest → latest), then deadline-less "standing orders" last.
+type QuestGroup = {
+  key: string; // "overdue" | "YYYY-MM-DD" | "standing"
+  label: string;
+  isOverdue: boolean;
+  quests: Quest[];
+};
+
+// Local YYYY-MM-DD key (not toISOString — that would shift by the UTC offset).
+function dateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const questGroups = computed<QuestGroup[]>(() => {
+  // Only top-level quests; sub-tasks render nested inside their parent's QuestCard.
+  const quests = (activeQuests.value ?? []).filter((q) => q.parentId == null);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = dateKey(today);
+
+  let overdue: Quest[] | null = null;
+  let standing: Quest[] | null = null;
+  const dated = new Map<string, Quest[]>();
+
+  for (const q of quests) {
+    if (!q.deadline) {
+      (standing ??= []).push(q);
+      continue;
+    }
+    const d = new Date(q.deadline);
+    if (d < today) {
+      (overdue ??= []).push(q);
+    } else {
+      const key = dateKey(d);
+      const bucket = dated.get(key);
+      if (bucket) bucket.push(q);
+      else dated.set(key, [q]);
+    }
+  }
+
+  const groups: QuestGroup[] = [];
+
+  if (overdue) {
+    overdue.sort(
+      (a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime(),
+    );
+    groups.push({ key: 'overdue', label: 'OVERDUE', isOverdue: true, quests: overdue });
+  }
+
+  for (const key of [...dated.keys()].sort()) {
+    const bucket = dated.get(key)!;
+    bucket.sort((a, b) => a.title.localeCompare(b.title));
+    // key is "YYYY-MM-DD"; build a local date for label formatting.
+    const [y, m, day] = key.split('-').map(Number);
+    const d = new Date(y!, m! - 1, day!);
+    const datePart = d
+      .toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })
+      .toUpperCase();
+    const weekday = d.toLocaleDateString('pl-PL', { weekday: 'long' }).toUpperCase();
+    const label =
+      key === todayKey
+        ? `TODAY · ${datePart} · ${weekday}`
+        : `${datePart} · ${weekday}`;
+    groups.push({ key, label, isOverdue: false, quests: bucket });
+  }
+
+  if (standing) {
+    standing.sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    groups.push({
+      key: 'standing',
+      label: 'STANDING ORDERS',
+      isOverdue: false,
+      quests: standing,
+    });
+  }
+
+  return groups;
 });
 
 // Lightweight "System"-style level-up feedback (no engine animations).
@@ -308,7 +384,13 @@ const xpPercent = computed(() => {
     </HubIcon>
 
     <!-- Hub panel overlay -->
-    <HubPanel v-if="activePanel" :title="panelTitle" :origin="panelOrigin" @close="closePanel">
+    <HubPanel
+      v-if="activePanel"
+      :title="panelTitle"
+      :origin="panelOrigin"
+      :max-width="activePanel === 'quests' ? 760 : undefined"
+      @close="closePanel"
+    >
       <!-- Header actions per panel -->
       <template #actions>
         <button
@@ -346,19 +428,30 @@ const xpPercent = computed(() => {
 
       <!-- Quests -->
       <template v-else-if="activePanel === 'quests'">
-        <div class="quest-list">
-          <p v-if="pending" class="hint">Loading quests…</p>
-          <p v-else-if="error" class="hint err">Could not load quests.</p>
-          <p v-else-if="!activeQuests?.length" class="hint">No active quests. Issue one above.</p>
-          <QuestCard
-            v-for="q in sortedQuests"
-            :key="q.id"
-            :quest="q"
-            :campaign-name="campaignName(q.campaignId)"
-            @completed="onCompleted"
-            @deleted="onDeleted"
-            @updated="onUpdated"
-          />
+        <p v-if="pending" class="hint">Loading quests…</p>
+        <p v-else-if="error" class="hint err">Could not load quests.</p>
+        <div v-else class="quest-groups">
+          <section
+            v-for="group in questGroups"
+            :key="group.key"
+            class="quest-group"
+          >
+            <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
+              {{ group.label }}
+            </div>
+            <div class="group-quests">
+              <QuestCard
+                v-for="q in group.quests"
+                :key="q.id"
+                :quest="q"
+                :campaign-name="campaignName(q.campaignId)"
+                @completed="onCompleted"
+                @deleted="onDeleted"
+                @updated="onUpdated"
+              />
+            </div>
+          </section>
+          <p v-if="!questGroups.length" class="hint">No active quests.</p>
         </div>
       </template>
 
@@ -480,6 +573,35 @@ const xpPercent = computed(() => {
 
 /* Quests panel body */
 .quest-list { display: flex; flex-direction: column; gap: 0.7rem; }
+
+/* Quests grouped into day-sections */
+.quest-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.quest-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.group-header {
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #4a3d7a;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(74, 61, 122, 0.3);
+}
+.group-header--overdue {
+  color: #c0543a;
+  border-bottom-color: rgba(192, 84, 58, 0.3);
+}
+.group-quests {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 .hint { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
 .hint.err { color: #ff8080; }
 
