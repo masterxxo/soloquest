@@ -31,3 +31,5 @@ export type CampaignDetail = InferResponseType<
   (typeof client.api.campaigns)[':id']['$get'],
   200
 >;
+// Bare campaign row (no questCount / quests) as returned by create and update.
+export type CampaignRow = InferResponseType<typeof client.api.campaigns.$post, 201>;

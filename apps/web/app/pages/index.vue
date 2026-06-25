@@ -7,6 +7,7 @@ import {
   type QuestWithWarnings,
   type Campaign,
   type CampaignDetail,
+  type CampaignRow,
 } from '~/lib/api-client';
 import { usePlayerStore } from '~/stores/player';
 
@@ -42,26 +43,12 @@ const { data: campaigns } = await useAsyncData(
 
 // null → campaign list view; set → campaign detail view.
 const selectedCampaign = ref<CampaignDetail | null>(null);
-const campaignLoading = ref(false);
 
 async function openCampaign(id: string) {
-  campaignLoading.value = true;
-  try {
-    const res = await client.api.campaigns[':id'].$get({ param: { id } });
-    if (res.ok) selectedCampaign.value = await res.json();
-  } finally {
-    campaignLoading.value = false;
-  }
+  const res = await client.api.campaigns[':id'].$get({ param: { id } });
+  if (res.ok) selectedCampaign.value = await res.json();
 }
 function backToCampaignList() { selectedCampaign.value = null; }
-
-const campaignDeadlineLabel = computed(() =>
-  selectedCampaign.value?.deadline
-    ? new Date(selectedCampaign.value.deadline).toLocaleDateString()
-    : null,
-);
-
-const CAMPAIGN_DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
 
 // Resolve a quest's campaignId to a campaign name (from the loaded list) for display.
 const campaignNameById = computed(() => {
@@ -73,37 +60,27 @@ function campaignName(id: string | null | undefined): string | null {
   return id ? campaignNameById.value.get(id) ?? null : null;
 }
 
-// Inline new-campaign form (kept lightweight; quests have their own QuestForm).
+// New-campaign form lives in CampaignForm; here we just toggle it and absorb the result.
 const showNewCampaignForm = ref(false);
-const campaignTitle = ref('');
-const campaignDifficulty = ref<'E' | 'D' | 'C' | 'B' | 'A' | 'S'>('E');
-const campaignDescription = ref('');
-const campaignDeadline = ref('');
-const creatingCampaign = ref(false);
 
-async function createCampaign() {
-  creatingCampaign.value = true;
-  try {
-    const res = await client.api.campaigns.$post({
-      json: {
-        title: campaignTitle.value,
-        difficulty: campaignDifficulty.value,
-        description: campaignDescription.value || undefined,
-        deadline: campaignDeadline.value ? new Date(campaignDeadline.value) : null,
-      },
-    });
-    if (!res.ok) return;
-    const created = await res.json();
-    // POST returns the row without questCount; a brand-new campaign has 0 quests.
-    campaigns.value = [{ ...created, questCount: 0 }, ...(campaigns.value ?? [])];
-    campaignTitle.value = '';
-    campaignDifficulty.value = 'E';
-    campaignDescription.value = '';
-    campaignDeadline.value = '';
-    showNewCampaignForm.value = false;
-  } finally {
-    creatingCampaign.value = false;
-  }
+function onCampaignCreated(created: CampaignRow) {
+  // POST returns the row without questCount; a brand-new campaign has 0 quests.
+  campaigns.value = [{ ...created, questCount: 0 }, ...(campaigns.value ?? [])];
+  showNewCampaignForm.value = false;
+}
+
+// Campaign edited (title/description/rank/deadline) via CampaignForm in the detail view.
+function onCampaignSaved(updated: CampaignRow) {
+  if (selectedCampaign.value?.id === updated.id)
+    selectedCampaign.value = { ...selectedCampaign.value, ...updated };
+  campaigns.value = (campaigns.value ?? []).map((c) =>
+    c.id === updated.id ? { ...c, ...updated } : c,
+  );
+}
+
+// Format a JSON-serialised date for the campaign cards / labels.
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString();
 }
 
 async function completeCampaign() {
@@ -329,6 +306,12 @@ const PANEL_TITLES: Record<Panel, string> = {
   glossary: 'Glossary',
 };
 const panelTitle = computed(() => (activePanel.value ? PANEL_TITLES[activePanel.value] : ''));
+// Wider frame for the list-heavy / two-pane views; default 540 elsewhere.
+const panelMaxWidth = computed(() => {
+  if (activePanel.value === 'quests') return 760;
+  if (activePanel.value === 'campaigns' && selectedCampaign.value) return 980;
+  return undefined;
+});
 
 // Viewport point the panel grows out of — the centre of the icon that opened it.
 const panelOrigin = ref<{ x: number; y: number } | null>(null);
@@ -415,7 +398,7 @@ const xpPercent = computed(() => {
       v-if="activePanel"
       :title="panelTitle"
       :origin="panelOrigin"
-      :max-width="activePanel === 'quests' ? 760 : undefined"
+      :max-width="panelMaxWidth"
       @close="closePanel"
     >
       <!-- Header actions per panel -->
@@ -488,26 +471,7 @@ const xpPercent = computed(() => {
       <template v-else-if="activePanel === 'campaigns'">
         <!-- State 1 — campaign list -->
         <template v-if="!selectedCampaign">
-          <form v-if="showNewCampaignForm" class="campaign-form" @submit.prevent="createCampaign">
-            <p class="tag">[ NEW CAMPAIGN ]</p>
-            <input v-model="campaignTitle" type="text" placeholder="Title" required maxlength="255" />
-            <textarea v-model="campaignDescription" placeholder="Description (optional)" rows="2" />
-            <div class="row">
-              <label>
-                Rank
-                <select v-model="campaignDifficulty">
-                  <option v-for="d in CAMPAIGN_DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
-                </select>
-              </label>
-              <label>
-                Deadline
-                <input v-model="campaignDeadline" type="date" />
-              </label>
-            </div>
-            <button type="submit" :disabled="creatingCampaign">
-              {{ creatingCampaign ? 'Saving…' : 'Create campaign' }}
-            </button>
-          </form>
+          <CampaignForm v-if="showNewCampaignForm" mode="create" @created="onCampaignCreated" />
 
           <div class="quest-list">
             <p v-if="!campaigns?.length" class="hint">No campaigns yet. Start one above.</p>
@@ -520,42 +484,24 @@ const xpPercent = computed(() => {
             >
               <span class="rank-badge">{{ c.difficulty }}</span>
               <span class="campaign-name">{{ c.title }}</span>
-              <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
+              <span class="campaign-meta">
+                <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
+                <span v-if="c.deadline" class="campaign-deadline">⌛ {{ fmtDate(c.deadline) }}</span>
+              </span>
             </button>
           </div>
         </template>
 
-        <!-- State 2 — campaign detail -->
-        <template v-else>
-          <div class="campaign-detail-head">
-            <span class="rank-badge">{{ selectedCampaign.difficulty }}</span>
-            <h3>{{ selectedCampaign.title }}</h3>
-          </div>
-          <p v-if="selectedCampaign.description" class="desc">{{ selectedCampaign.description }}</p>
-          <p v-if="campaignDeadlineLabel" class="hint">⌛ {{ campaignDeadlineLabel }}</p>
-
-          <button
-            v-if="selectedCampaign.status === 'active'"
-            type="button"
-            class="complete-campaign"
-            @click="completeCampaign"
-          >
-            Complete Campaign
-          </button>
-
-          <div class="quest-list">
-            <p v-if="campaignLoading" class="hint">Loading…</p>
-            <p v-else-if="!selectedCampaign.quests.length" class="hint">No quests in this campaign yet.</p>
-            <QuestCard
-              v-for="q in selectedCampaign.quests"
-              :key="q.id"
-              :quest="q"
-              @completed="onCampaignQuestCompleted"
-              @deleted="onCampaignQuestDeleted"
-              @updated="onCampaignQuestUpdated"
-            />
-          </div>
-        </template>
+        <!-- State 2 — campaign detail (wide two-pane view) -->
+        <CampaignView
+          v-else
+          :campaign="selectedCampaign"
+          @complete="completeCampaign"
+          @saved="onCampaignSaved"
+          @quest-completed="onCampaignQuestCompleted"
+          @quest-deleted="onCampaignQuestDeleted"
+          @quest-updated="onCampaignQuestUpdated"
+        />
       </template>
 
       <!-- Glossary -->
@@ -655,52 +601,6 @@ const xpPercent = computed(() => {
 .coming-soon { margin: 1rem 0; text-align: center; font-size: 0.85rem; color: #4a3d7a; }
 
 /* Campaigns panel */
-.campaign-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 1rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-}
-.campaign-form .tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #7c5ce8; }
-.campaign-form input,
-.campaign-form textarea,
-.campaign-form select {
-  padding: 0.55rem 0.7rem;
-  background: #0a0618;
-  border: 1px solid #2a2050;
-  color: #ece8fb;
-  font: inherit;
-  font-size: 0.9rem;
-  outline: none;
-}
-.campaign-form input:focus,
-.campaign-form textarea:focus,
-.campaign-form select:focus {
-  border-color: #7c5ce8;
-  box-shadow: 0 0 0 2px rgba(124, 92, 232, 0.3);
-}
-.campaign-form textarea { resize: vertical; }
-.campaign-form .row { display: flex; gap: 0.7rem; }
-.campaign-form .row label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: #8174b8;
-}
-.campaign-form button {
-  padding: 0.6rem;
-  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
-}
-.campaign-form button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .campaign-card {
   display: flex;
@@ -727,21 +627,15 @@ const xpPercent = computed(() => {
   color: #c9bcff;
 }
 .campaign-name { flex: 1 1 auto; font-size: 0.95rem; }
-.campaign-count { flex: 0 0 auto; font-size: 0.75rem; color: #8174b8; }
-
-.campaign-detail-head { display: flex; align-items: center; gap: 0.75rem; }
-.campaign-detail-head h3 { margin: 0; font-size: 1.1rem; color: #ece8fb; }
-.desc { margin: 0; font-size: 0.85rem; color: #8174b8; }
-.complete-campaign {
-  align-self: flex-start;
-  padding: 0.55rem 1rem;
-  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
+.campaign-meta {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
 }
+.campaign-count { font-size: 0.75rem; color: #8174b8; }
+.campaign-deadline { font-size: 0.72rem; color: #6a5da0; }
 
 /* Header action buttons (HubPanel #actions slot) */
 .hdr-btn {
