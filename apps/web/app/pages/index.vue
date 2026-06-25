@@ -171,9 +171,36 @@ function onDeleted(id: string) {
 
 function onUpdated(result: QuestWithWarnings) {
   activeQuests.value = (activeQuests.value ?? []).map((q) =>
-    q.id === result.quest.id ? result.quest : q,
+    // Merge so nested subTasks (absent from the PATCH response) are preserved.
+    q.id === result.quest.id ? { ...q, ...result.quest } : q,
   );
   if (result.warnings.length) showWarnings(result.warnings);
+  // Keep an open detail view in sync with the edit.
+  if (selectedQuest.value?.id === result.quest.id)
+    selectedQuest.value = { ...selectedQuest.value, ...result.quest };
+}
+
+// Quest detail view — a panel stacked over the Quests list (like the new-quest form).
+const selectedQuest = ref<Quest | null>(null);
+const questDetailOrigin = ref<{ x: number; y: number } | null>(null);
+function openQuestDetail(quest: Quest, event?: MouseEvent) {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    questDetailOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  } else {
+    questDetailOrigin.value = null;
+  }
+  selectedQuest.value = quest;
+}
+// Completing or deleting from the detail view also closes it (the quest is gone).
+function onDetailCompleted(result: CompleteResult) {
+  onCompleted(result);
+  selectedQuest.value = null;
+}
+function onDetailDeleted(id: string) {
+  onDeleted(id);
+  selectedQuest.value = null;
 }
 
 // Group top-level quests into day-sections by deadline: an "overdue" bucket first,
@@ -444,7 +471,9 @@ const xpPercent = computed(() => {
                 v-for="q in group.quests"
                 :key="q.id"
                 :quest="q"
+                selectable
                 :campaign-name="campaignName(q.campaignId)"
+                @open="openQuestDetail"
                 @completed="onCompleted"
                 @deleted="onDeleted"
                 @updated="onUpdated"
@@ -543,6 +572,24 @@ const xpPercent = computed(() => {
       @close="showNewQuestForm = false"
     >
       <QuestForm mode="create" @created="onCreated" />
+    </HubPanel>
+
+    <!-- Single-quest detail — a wide, two-pane modal (main column + details rail),
+         stacked over the Quests panel. -->
+    <HubPanel
+      v-if="selectedQuest"
+      title="Quest"
+      :origin="questDetailOrigin"
+      :max-width="980"
+      @close="selectedQuest = null"
+    >
+      <QuestDetail
+        :quest="selectedQuest"
+        :campaign-name="campaignName(selectedQuest.campaignId)"
+        @completed="onDetailCompleted"
+        @deleted="onDetailDeleted"
+        @updated="onUpdated"
+      />
     </HubPanel>
 
     <LevelUpToast :level="levelUpTo" />

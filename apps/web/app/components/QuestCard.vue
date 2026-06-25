@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { client, type Quest, type CompleteResult, type QuestWithWarnings } from '~/lib/api-client';
+import { type Quest, type CompleteResult, type QuestWithWarnings } from '~/lib/api-client';
+import { useQuestActions, RANK_COLORS } from '~/composables/useQuestActions';
 
 const props = withDefaults(
   defineProps<{
@@ -9,19 +10,22 @@ const props = withDefaults(
     campaignName?: string | null;
     // For a sub-task, the title of the quest it belongs to.
     parentName?: string | null;
+    // Title becomes a button that emits `open` (used by the list to open detail).
+    selectable?: boolean;
   }>(),
-  { isSubTask: false, campaignName: null, parentName: null },
+  { isSubTask: false, campaignName: null, parentName: null, selectable: false },
 );
 const emit = defineEmits<{
   completed: [result: CompleteResult];
   deleted: [id: string];
   updated: [result: QuestWithWarnings];
+  open: [quest: Quest, event: MouseEvent];
 }>();
 
-const completing = ref(false);
-const deleting = ref(false);
+// Top-level list cards open a detail view; sub-tasks don't.
+const openable = computed(() => props.selectable && !props.isSubTask);
+
 const editing = ref(false);
-const errorMsg = ref<string | null>(null);
 
 // Only active quests can be edited/completed (mirrors the backend guard).
 const isActive = computed(() => props.quest.status === 'active');
@@ -31,46 +35,16 @@ function onUpdated(result: QuestWithWarnings) {
   emit('updated', result);
 }
 
-// Solo Leveling rank colours, E (weakest) → S (strongest).
-const RANK_COLORS: Record<string, string> = {
-  E: '#8a8f98', D: '#3fbf6f', C: '#2f6bff', B: '#9a5bff', A: '#ff9a3c', S: '#ffcf3c',
-};
 const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
 
 const deadlineLabel = computed(() =>
   props.quest.deadline ? new Date(props.quest.deadline).toLocaleDateString() : null,
 );
 
-async function onComplete() {
-  completing.value = true;
-  errorMsg.value = null;
-  try {
-    const res = await client.api.quests[':id'].complete.$post({ param: { id: props.quest.id } });
-    if (!res.ok) {
-      errorMsg.value = res.status === 409 ? 'Already completed.' : 'Could not complete quest.';
-      return;
-    }
-    emit('completed', await res.json());
-  } finally {
-    completing.value = false;
-  }
-}
-
-async function onDelete() {
-  if (!confirm(`Delete quest "${props.quest.title}"?`)) return;
-  deleting.value = true;
-  errorMsg.value = null;
-  try {
-    const res = await client.api.quests[':id'].$delete({ param: { id: props.quest.id } });
-    if (!res.ok) {
-      errorMsg.value = 'Could not delete quest.';
-      return;
-    }
-    emit('deleted', props.quest.id);
-  } finally {
-    deleting.value = false;
-  }
-}
+const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(
+  () => props.quest,
+  { completed: (r) => emit('completed', r), deleted: (id) => emit('deleted', id) },
+);
 </script>
 
 <template>
@@ -89,7 +63,12 @@ async function onDelete() {
       </span>
 
       <div class="body">
-        <h3>{{ quest.title }}</h3>
+        <h3>
+          <button v-if="openable" type="button" class="title-btn" @click="emit('open', quest, $event)">
+            {{ quest.title }}
+          </button>
+          <template v-else>{{ quest.title }}</template>
+        </h3>
         <!-- Names only — the raw id is never shown; the line is hidden until the
              parent resolves a name. -->
         <div v-if="campaignName || parentName" class="rel-meta">
@@ -174,8 +153,20 @@ async function onDelete() {
 }
 .body { flex: 1 1 auto; min-width: 0; }
 h3 { margin: 0; font-size: 0.95rem; color: #ece8fb; }
+.title-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.title-btn:hover { color: #fff; text-decoration: underline; }
 .rel-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.15rem; font-size: 0.7rem; color: #6a5da0; }
-/* Clamp long descriptions to 2 lines so one quest can't dominate the list. */
+/* Clamp long descriptions to 2 lines so one quest can't dominate the list;
+   the full text lives in the detail view (QuestDetail). */
 .desc {
   margin: 0.2rem 0 0.3rem;
   font-size: 0.85rem;
