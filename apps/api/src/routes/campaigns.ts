@@ -84,8 +84,9 @@ export const campaignsRouter = new Hono<{ Variables: Variables }>()
         .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)));
 
       if (!existing) return c.json({ error: 'Campaign not found' }, 404);
-      if (existing.status !== 'active') {
-        return c.json({ error: 'Only active campaigns can be edited' }, 409);
+      // Active and clearing campaigns are still editable; completed ones are locked.
+      if (existing.status === 'completed') {
+        return c.json({ error: 'Completed campaigns cannot be edited' }, 409);
       }
 
       const [updated] = await db
@@ -109,6 +110,31 @@ export const campaignsRouter = new Hono<{ Variables: Variables }>()
 
     if (!deleted) return c.json({ error: 'Campaign not found' }, 404);
     return c.json({ success: true });
+  })
+
+  // Begin work on a campaign: active → clearing. Idempotent-ish — only an untouched
+  // (active) campaign can be started; clearing/completed return 409.
+  .post('/:id/start', zValidator('param', campaignIdParamSchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const { id } = c.req.valid('param');
+
+    const [existing] = await db
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)));
+
+    if (!existing) return c.json({ error: 'Campaign not found' }, 404);
+    if (existing.status !== 'active') {
+      return c.json({ error: 'Campaign already started' }, 409);
+    }
+
+    const [updated] = await db
+      .update(campaigns)
+      .set({ status: 'clearing' })
+      .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)))
+      .returning();
+
+    return c.json(updated);
   })
 
   // Mark a campaign as completed, scoped to the owner.

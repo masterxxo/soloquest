@@ -9,6 +9,7 @@ import {
   type CampaignDetail,
   type CampaignRow,
 } from '~/lib/api-client';
+import { CAMPAIGN_STATUS_LABEL, CAMPAIGN_STATUS_COLOR } from '~/composables/campaignStatus';
 import { usePlayerStore } from '~/stores/player';
 
 // Session stays the source of truth; the store is a projection of session.user.
@@ -95,6 +96,31 @@ async function completeCampaign() {
   );
 }
 
+// Manual "Begin Operation": active → clearing.
+async function startCampaign() {
+  if (!selectedCampaign.value) return;
+  const id = selectedCampaign.value.id;
+  const res = await client.api.campaigns[':id'].start.$post({ param: { id } });
+  if (!res.ok) return;
+  const updated = await res.json();
+  selectedCampaign.value = { ...selectedCampaign.value, status: updated.status };
+  campaigns.value = (campaigns.value ?? []).map((c) =>
+    c.id === id ? { ...c, status: updated.status } : c,
+  );
+}
+
+// Mirror the server's auto-transition: completing a quest in an untouched (active)
+// campaign moves it to 'clearing'. Applied client-side so state stays in sync
+// without a refetch.
+function bumpCampaignToClearing(campaignId: string | null | undefined) {
+  if (!campaignId) return;
+  if (selectedCampaign.value?.id === campaignId && selectedCampaign.value.status === 'active')
+    selectedCampaign.value = { ...selectedCampaign.value, status: 'clearing' };
+  campaigns.value = (campaigns.value ?? []).map((c) =>
+    c.id === campaignId && c.status === 'active' ? { ...c, status: 'clearing' } : c,
+  );
+}
+
 // Handlers for the QuestCards shown inside a campaign's detail view. They keep the
 // selected campaign's quest list in sync (it's separate from activeQuests).
 function onCampaignQuestCompleted(result: CompleteResult) {
@@ -105,6 +131,7 @@ function onCampaignQuestCompleted(result: CompleteResult) {
     ...selectedCampaign.value,
     quests: selectedCampaign.value.quests.filter((q) => q.id !== result.quest.id),
   };
+  bumpCampaignToClearing(result.quest.campaignId);
 }
 function onCampaignQuestDeleted(id: string) {
   if (!selectedCampaign.value) return;
@@ -140,6 +167,8 @@ function onCompleted(result: CompleteResult) {
   // Single source of player state, updated straight from the server response.
   player.applyProgress(result.player);
   if (result.leveledUp) showLevelUp(result.player.level);
+  // If the quest belonged to an untouched campaign, the server moved it to 'clearing'.
+  bumpCampaignToClearing(result.quest.campaignId);
 }
 
 function onDeleted(id: string) {
@@ -485,6 +514,12 @@ const xpPercent = computed(() => {
               <span class="rank-badge">{{ c.difficulty }}</span>
               <span class="campaign-name">{{ c.title }}</span>
               <span class="campaign-meta">
+                <span
+                  class="campaign-status"
+                  :style="{ color: CAMPAIGN_STATUS_COLOR[c.status] }"
+                >
+                  {{ CAMPAIGN_STATUS_LABEL[c.status] }}
+                </span>
                 <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
                 <span v-if="c.deadline" class="campaign-deadline">⌛ {{ fmtDate(c.deadline) }}</span>
               </span>
@@ -497,6 +532,7 @@ const xpPercent = computed(() => {
           v-else
           :campaign="selectedCampaign"
           @complete="completeCampaign"
+          @start="startCampaign"
           @saved="onCampaignSaved"
           @quest-completed="onCampaignQuestCompleted"
           @quest-deleted="onCampaignQuestDeleted"
@@ -634,6 +670,7 @@ const xpPercent = computed(() => {
   align-items: flex-end;
   gap: 0.2rem;
 }
+.campaign-status { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .campaign-count { font-size: 0.75rem; color: #8174b8; }
 .campaign-deadline { font-size: 0.72rem; color: #6a5da0; }
 

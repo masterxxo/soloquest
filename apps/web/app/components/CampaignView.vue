@@ -6,10 +6,12 @@ import {
   type QuestWithWarnings,
 } from '~/lib/api-client';
 import { RANK_COLORS } from '~/composables/useQuestActions';
+import { CAMPAIGN_STATUS_LABEL, CAMPAIGN_STATUS_COLOR } from '~/composables/campaignStatus';
 
 const props = defineProps<{ campaign: CampaignDetail }>();
 const emit = defineEmits<{
   complete: [];
+  start: [];
   saved: [campaign: CampaignRow];
   questCompleted: [result: CompleteResult];
   questDeleted: [id: string];
@@ -24,6 +26,10 @@ function onSaved(campaign: CampaignRow) {
 
 const rankColor = computed(() => RANK_COLORS[props.campaign.difficulty] ?? '#8a8f98');
 const isActive = computed(() => props.campaign.status === 'active');
+// Active + clearing share the same affordances; completed locks everything.
+const notCompleted = computed(() => props.campaign.status !== 'completed');
+const statusLabel = computed(() => CAMPAIGN_STATUS_LABEL[props.campaign.status]);
+const statusColor = computed(() => CAMPAIGN_STATUS_COLOR[props.campaign.status]);
 const deadlineLabel = computed(() =>
   props.campaign.deadline ? new Date(props.campaign.deadline).toLocaleDateString() : null,
 );
@@ -50,6 +56,12 @@ const questCount = computed(() => props.campaign.quests.length);
         {{ campaign.difficulty }}
       </span>
       <h2 class="cv-title">{{ campaign.title }}</h2>
+      <span
+        class="status-pill"
+        :style="{ color: statusColor, borderColor: statusColor }"
+      >
+        {{ statusLabel }}
+      </span>
     </header>
 
     <div class="cv-grid">
@@ -79,7 +91,8 @@ const questCount = computed(() => props.campaign.quests.length);
 
       <!-- Details sidebar -->
       <aside class="cv-side">
-        <div v-if="isActive" class="cv-actions">
+        <div v-if="notCompleted" class="cv-actions">
+          <button v-if="isActive" class="start" @click="emit('start')">Begin Operation</button>
           <button class="complete" @click="emit('complete')">Complete Campaign</button>
           <button class="edit" @click="editing = true">Edit</button>
         </div>
@@ -94,7 +107,7 @@ const questCount = computed(() => props.campaign.quests.length);
               </span>
             </dd>
             <dt>Status</dt>
-            <dd class="cap">{{ campaign.status }}</dd>
+            <dd :style="{ color: statusColor }">{{ statusLabel }}</dd>
             <dt>Quests</dt>
             <dd>{{ questCount }}</dd>
             <dt>Deadline</dt>
@@ -117,6 +130,16 @@ const questCount = computed(() => props.campaign.quests.length);
 
 .cv-head { display: flex; align-items: center; gap: 0.85rem; }
 .cv-title { margin: 0; font-size: 1.6rem; line-height: 1.2; color: #ece8fb; }
+.status-pill {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid;
+  background: #0a0618;
+}
 .rank {
   flex: 0 0 auto;
   width: 2.4rem;
@@ -189,6 +212,17 @@ const questCount = computed(() => props.campaign.quests.length);
   border: none;
   box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
 }
+.cv-actions .start {
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: linear-gradient(180deg, #2f8fe0, #1f63b8);
+  color: #fff;
+  border: none;
+  box-shadow: 0 0 14px rgba(63, 167, 255, 0.4);
+}
 .cv-actions .edit {
   padding: 0.55rem 0.7rem;
   font: inherit;
@@ -209,7 +243,6 @@ const questCount = computed(() => props.campaign.quests.length);
 }
 .cv-details dt { font-size: 0.78rem; color: #8174b8; }
 .cv-details dd { margin: 0; font-size: 0.85rem; color: #d0c8f8; text-align: right; }
-.cv-details .cap { text-transform: capitalize; }
 .rank-inline {
   display: inline-grid;
   place-items: center;

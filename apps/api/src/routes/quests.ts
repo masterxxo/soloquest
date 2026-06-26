@@ -198,6 +198,21 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .set({ xp: newXp, level: newLevel })
         .where(eq(userTable.id, sessionUser.id));
 
+      // Completing a quest in a still-untouched campaign nudges it into 'clearing'.
+      // Scoped to status='active' so we never resurrect a completed campaign.
+      if (quest.campaignId) {
+        await tx
+          .update(campaigns)
+          .set({ status: 'clearing' })
+          .where(
+            and(
+              eq(campaigns.id, quest.campaignId),
+              eq(campaigns.userId, sessionUser.id),
+              eq(campaigns.status, 'active'),
+            ),
+          );
+      }
+
       return {
         quest: updatedQuest,
         player: { xp: newXp, level: newLevel },

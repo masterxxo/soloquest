@@ -5,7 +5,9 @@ import { user } from './auth'
 import { difficultyEnum } from './enums'
 import { quests } from './quests'
 
-export const campaignStatusEnum = pgEnum('campaign_status', ['active','completed']);
+// 'clearing' = the campaign is actively being worked (Solo Leveling: a gate being
+// cleared). Sits between 'active' (issued, untouched) and 'completed'.
+export const campaignStatusEnum = pgEnum('campaign_status', ['active','clearing','completed']);
 
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').primaryKey().defaultRandom(),

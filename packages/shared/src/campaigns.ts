@@ -9,9 +9,14 @@ export const createCampaignSchema = z.object({
 
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 
-// Partial create + the status transition (active ⇄ completed) is editable here.
+// Reusable status enum so the value set lives in one place (mirrors the DB enum).
+export const campaignStatusSchema = z.enum(["active", "clearing", "completed"]);
+export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
+
+// Partial create + the status field. Status transitions are driven by the dedicated
+// /start and /complete endpoints; it's accepted here too for completeness.
 export const updateCampaignSchema = createCampaignSchema.partial().extend({
-  status: z.enum(["active", "completed"]).optional(),
+  status: campaignStatusSchema.optional(),
 });
 
 export type UpdateCampaignInput = z.infer<typeof updateCampaignSchema>;
