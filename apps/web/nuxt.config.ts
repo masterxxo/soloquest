@@ -2,6 +2,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
+  app: { head: { title: 'Solo Quest' } },
   modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss'],
   runtimeConfig: { public: { apiBase: 'http://localhost:3001'}},
   nitro: {
