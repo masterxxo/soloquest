@@ -1,5 +1,6 @@
 <template>
   <div class="sq-root">
+    <SmokeCanvas :density="1.5" :speed="1.0" />
     <NuxtRouteAnnouncer />
     <NuxtPage />
   </div>

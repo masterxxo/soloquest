@@ -78,6 +78,7 @@ const originStyle = computed(() => {
       </svg>
 
         <div class="panel" :style="originStyle">
+          <SmokeCanvas :density="1.7" :speed="0.7" />
           <span class="corner corner-tl" />
           <span class="corner corner-tr" />
           <span class="corner corner-bl" />
@@ -209,6 +210,9 @@ const originStyle = computed(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Above the SmokeCanvas (which sits at the panel's base layer). */
+  position: relative;
+  z-index: 1;
 }
 /* Decorative corner brackets. */
 .corner {
@@ -228,6 +232,9 @@ const originStyle = computed(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.75rem;
+  /* Above the SmokeCanvas (which sits at the panel's base layer). */
+  position: relative;
+  z-index: 1;
 }
 .panel-title { font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: #7c5ce8; }
 .panel-actions { display: flex; align-items: center; gap: 0.6rem; }
