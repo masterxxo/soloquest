@@ -3,6 +3,7 @@ import {
   type CampaignDetail,
   type CampaignRow,
   type CompleteResult,
+  type Quest,
   type QuestWithWarnings,
 } from '~/lib/api-client';
 import { RANK_COLORS } from '~/composables/useQuestActions';
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   questCompleted: [result: CompleteResult];
   questDeleted: [id: string];
   questUpdated: [result: QuestWithWarnings];
+  questOpen: [quest: Quest, event: MouseEvent];
 }>();
 
 const editing = ref(false);
@@ -80,6 +82,8 @@ const questCount = computed(() => props.campaign.quests.length);
               v-for="q in campaign.quests"
               :key="q.id"
               :quest="q"
+              selectable
+              @open="(quest, event) => emit('questOpen', quest, event)"
               @completed="emit('questCompleted', $event)"
               @deleted="emit('questDeleted', $event)"
               @updated="emit('questUpdated', $event)"

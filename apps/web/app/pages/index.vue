@@ -121,6 +121,17 @@ function bumpCampaignToClearing(campaignId: string | null | undefined) {
   );
 }
 
+// Drop a quest from the open campaign's detail list, if it's the one shown. Used
+// when a quest is completed/deleted from the quest-detail panel (which may have
+// been opened from inside the campaign view).
+function removeCampaignQuest(id: string) {
+  if (!selectedCampaign.value?.quests.some((q) => q.id === id)) return;
+  selectedCampaign.value = {
+    ...selectedCampaign.value,
+    quests: selectedCampaign.value.quests.filter((q) => q.id !== id),
+  };
+}
+
 // Handlers for the QuestCards shown inside a campaign's detail view. They keep the
 // selected campaign's quest list in sync (it's separate from activeQuests).
 function onCampaignQuestCompleted(result: CompleteResult) {
@@ -167,12 +178,15 @@ function onCompleted(result: CompleteResult) {
   // Single source of player state, updated straight from the server response.
   player.applyProgress(result.player);
   if (result.leveledUp) showLevelUp(result.player.level);
+  // Keep an open campaign detail view in sync (detail panel can be opened from it).
+  removeCampaignQuest(result.quest.id);
   // If the quest belonged to an untouched campaign, the server moved it to 'clearing'.
   bumpCampaignToClearing(result.quest.campaignId);
 }
 
 function onDeleted(id: string) {
   activeQuests.value = (activeQuests.value ?? []).filter((q) => q.id !== id);
+  removeCampaignQuest(id);
 }
 
 function onUpdated(result: QuestWithWarnings) {
@@ -184,6 +198,14 @@ function onUpdated(result: QuestWithWarnings) {
   // Keep an open detail view in sync with the edit.
   if (selectedQuest.value?.id === result.quest.id)
     selectedQuest.value = { ...selectedQuest.value, ...result.quest };
+  // Keep an open campaign detail view in sync too (merge, preserving subTasks).
+  if (selectedCampaign.value?.quests.some((q) => q.id === result.quest.id))
+    selectedCampaign.value = {
+      ...selectedCampaign.value,
+      quests: selectedCampaign.value.quests.map((q) =>
+        q.id === result.quest.id ? { ...q, ...result.quest } : q,
+      ),
+    };
 }
 
 // Quest detail view — a panel stacked over the Quests list (like the new-quest form).
@@ -534,6 +556,7 @@ const xpPercent = computed(() => {
           @complete="completeCampaign"
           @start="startCampaign"
           @saved="onCampaignSaved"
+          @quest-open="openQuestDetail"
           @quest-completed="onCampaignQuestCompleted"
           @quest-deleted="onCampaignQuestDeleted"
           @quest-updated="onCampaignQuestUpdated"
