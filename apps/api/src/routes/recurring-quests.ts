@@ -1,0 +1,300 @@
+import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { and, desc, eq } from 'drizzle-orm';
+import {
+  db,
+  recurringQuests,
+  recurringQuestCompletions,
+  recurringQuestStreaks,
+  userSettings,
+  user as userTable,
+} from '@soloquest/db';
+import {
+  createRecurringQuestSchema,
+  updateRecurringQuestSchema,
+  completeRecurringQuestSchema,
+  recurringQuestIdParamSchema,
+  levelFromTotalXp,
+} from '@soloquest/shared';
+import { requireAuth, type Variables } from '../middleware/auth';
+import {
+  getUserDate,
+  toDateString,
+  fromDateString,
+  wasRequiredOn,
+  previousRequiredDate,
+} from '../lib/recurrence';
+import { checkAndAwardAchievements } from '../lib/streak';
+
+// Completing a recurring quest always grants a flat reward, independent of difficulty —
+// the value of a habit is in the repetition, not the one-off rank.
+const RECURRING_XP_REWARD = 10;
+
+// The user's timezone decides "what day is it for them". Falls back to UTC when no
+// settings row exists yet.
+async function getUserTimezone(userId: string): Promise<string> {
+  const [settings] = await db
+    .select({ timezone: userSettings.timezone })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId));
+  return settings?.timezone ?? 'UTC';
+}
+
+// Chained so Hono RPC can infer the route types end-to-end.
+export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
+  .use('*', requireAuth)
+
+  // List the user's active recurring quests, each with its streak plus two derived
+  // flags for today (in the user's timezone): isDueToday and isCompletedToday.
+  .get('/', async (c) => {
+    const userId = c.get('user')!.id;
+    const timezone = await getUserTimezone(userId);
+    const today = getUserDate(new Date(), timezone);
+    const todayStr = toDateString(today);
+
+    const rows = await db.query.recurringQuests.findMany({
+      where: and(eq(recurringQuests.userId, userId), eq(recurringQuests.isActive, true)),
+      orderBy: desc(recurringQuests.createdAt),
+      with: {
+        streak: true,
+        // Only today's completion is needed to derive isCompletedToday.
+        completions: { where: eq(recurringQuestCompletions.completedDate, todayStr) },
+      },
+    });
+
+    const result = rows.map(({ completions, ...quest }) => ({
+      ...quest,
+      isDueToday: wasRequiredOn(quest, today),
+      isCompletedToday: completions.length > 0,
+    }));
+
+    return c.json(result);
+  })
+
+  // Create a recurring quest and its (empty) streak row atomically.
+  .post('/', zValidator('json', createRecurringQuestSchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const input = c.req.valid('json');
+
+    const result = await db.transaction(async (tx) => {
+      const [quest] = await tx
+        .insert(recurringQuests)
+        .values({
+          userId,
+          title: input.title,
+          description: input.description,
+          difficulty: input.difficulty,
+          recurrenceType: input.recurrenceType,
+          // daily carries no value; the others store interval / bitmask.
+          recurrenceValue:
+            input.recurrenceType === 'daily' ? null : input.recurrenceValue ?? null,
+        })
+        .returning();
+
+      const [streak] = await tx
+        .insert(recurringQuestStreaks)
+        .values({ recurringQuestId: quest.id, userId })
+        .returning();
+
+      return { quest, streak };
+    });
+
+    return c.json(result, 201);
+  })
+
+  // Partial edit, scoped to the owner. Only active recurring quests are editable.
+  .patch(
+    '/:id',
+    zValidator('param', recurringQuestIdParamSchema),
+    zValidator('json', updateRecurringQuestSchema),
+    async (c) => {
+      const userId = c.get('user')!.id;
+      const { id } = c.req.valid('param');
+      const input = c.req.valid('json');
+
+      if (Object.keys(input).length === 0) {
+        return c.json({ error: 'No fields to update' }, 400);
+      }
+
+      const [existing] = await db
+        .select()
+        .from(recurringQuests)
+        .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
+
+      if (!existing) return c.json({ error: 'Recurring quest not found' }, 404);
+      if (!existing.isActive) {
+        return c.json({ error: 'Only active recurring quests can be edited' }, 409);
+      }
+
+      const [updated] = await db
+        .update(recurringQuests)
+        .set(input)
+        .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)))
+        .returning();
+
+      return c.json(updated);
+    },
+  )
+
+  // Soft delete: deactivate so history (completions, streak) survives.
+  .delete('/:id', zValidator('param', recurringQuestIdParamSchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const { id } = c.req.valid('param');
+
+    const [updated] = await db
+      .update(recurringQuests)
+      .set({ isActive: false })
+      .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)))
+      .returning();
+
+    if (!updated) return c.json({ error: 'Recurring quest not found' }, 404);
+    return c.json({ success: true });
+  })
+
+  // Complete a recurring quest for a given date: record it, advance the streak, grant
+  // XP, and award any newly-crossed achievements — all atomically.
+  .post(
+    '/:id/complete',
+    zValidator('param', recurringQuestIdParamSchema),
+    zValidator('json', completeRecurringQuestSchema),
+    async (c) => {
+      const userId = c.get('user')!.id;
+      const { id } = c.req.valid('param');
+      const { completedDate } = c.req.valid('json');
+
+      const [quest] = await db
+        .select()
+        .from(recurringQuests)
+        .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
+
+      if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
+      if (!quest.isActive) {
+        return c.json({ error: 'Recurring quest is not active' }, 409);
+      }
+
+      // One completion per quest per day.
+      const [already] = await db
+        .select({ id: recurringQuestCompletions.id })
+        .from(recurringQuestCompletions)
+        .where(
+          and(
+            eq(recurringQuestCompletions.recurringQuestId, id),
+            eq(recurringQuestCompletions.completedDate, completedDate),
+          ),
+        );
+      if (already) {
+        return c.json({ error: 'Already completed for this date' }, 409);
+      }
+
+      const completedDateObj = fromDateString(completedDate);
+      if (!wasRequiredOn(quest, completedDateObj)) {
+        return c.json({ error: 'Quest was not required on this date' }, 400);
+      }
+
+      const result = await db.transaction(async (tx) => {
+        const [completion] = await tx
+          .insert(recurringQuestCompletions)
+          .values({ recurringQuestId: id, userId, completedDate })
+          .returning();
+
+        // Read the current streak (created at POST; recreated defensively if missing).
+        let [streak] = await tx
+          .select()
+          .from(recurringQuestStreaks)
+          .where(eq(recurringQuestStreaks.recurringQuestId, id));
+        if (!streak) {
+          [streak] = await tx
+            .insert(recurringQuestStreaks)
+            .values({ recurringQuestId: id, userId })
+            .returning();
+        }
+
+        // The streak continues only if the previous completion landed exactly on the
+        // prior required day; otherwise it restarts at 1.
+        const prevRequired = previousRequiredDate(quest, completedDateObj);
+        const prevRequiredStr = prevRequired ? toDateString(prevRequired) : null;
+        const continues =
+          streak.lastCompletedDate !== null &&
+          prevRequiredStr !== null &&
+          streak.lastCompletedDate === prevRequiredStr;
+
+        const currentStreak = continues ? streak.currentStreak + 1 : 1;
+        const longestStreak = Math.max(streak.longestStreak, currentStreak);
+        const totalCompletions = streak.totalCompletions + 1;
+        // Never move lastCompletedDate backwards (e.g. backfilling an earlier date).
+        const lastCompletedDate =
+          streak.lastCompletedDate && streak.lastCompletedDate > completedDate
+            ? streak.lastCompletedDate
+            : completedDate;
+
+        const [updatedStreak] = await tx
+          .update(recurringQuestStreaks)
+          .set({ currentStreak, longestStreak, totalCompletions, lastCompletedDate })
+          .where(eq(recurringQuestStreaks.recurringQuestId, id))
+          .returning();
+
+        // Server-authoritative XP: flat +10, recompute level from the new total.
+        const [currentUser] = await tx
+          .select()
+          .from(userTable)
+          .where(eq(userTable.id, userId));
+        const prevLevel = currentUser.level ?? 1;
+        const newXp = (currentUser.xp ?? 0) + RECURRING_XP_REWARD;
+        const { level: newLevel } = levelFromTotalXp(newXp);
+        await tx
+          .update(userTable)
+          .set({ xp: newXp, level: newLevel })
+          .where(eq(userTable.id, userId));
+
+        const { newAchievements } = await checkAndAwardAchievements(
+          tx,
+          userId,
+          id,
+          updatedStreak,
+        );
+
+        return {
+          completion,
+          streak: {
+            currentStreak: updatedStreak.currentStreak,
+            longestStreak: updatedStreak.longestStreak,
+            totalCompletions: updatedStreak.totalCompletions,
+          },
+          player: { xp: newXp, level: newLevel },
+          leveledUp: newLevel > prevLevel,
+          newAchievements,
+        };
+      });
+
+      return c.json(result);
+    },
+  )
+
+  // Streak summary plus the last 30 completion dates, scoped to the owner.
+  .get('/:id/stats', zValidator('param', recurringQuestIdParamSchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const { id } = c.req.valid('param');
+
+    const [quest] = await db
+      .select({ id: recurringQuests.id })
+      .from(recurringQuests)
+      .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
+    if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
+
+    const [streak] = await db
+      .select()
+      .from(recurringQuestStreaks)
+      .where(eq(recurringQuestStreaks.recurringQuestId, id));
+
+    const completions = await db
+      .select({ completedDate: recurringQuestCompletions.completedDate })
+      .from(recurringQuestCompletions)
+      .where(eq(recurringQuestCompletions.recurringQuestId, id))
+      .orderBy(desc(recurringQuestCompletions.completedDate))
+      .limit(30);
+
+    return c.json({
+      streak: streak ?? null,
+      completions: completions.map((row) => row.completedDate),
+    });
+  });

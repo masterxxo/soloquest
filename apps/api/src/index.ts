@@ -5,6 +5,9 @@ import { auth } from './auth';
 import { sessionMiddleware, type Variables } from './middleware/auth';
 import { questsRouter } from './routes/quests';
 import { campaignsRouter } from './routes/campaigns';
+import { recurringQuestsRouter } from './routes/recurring-quests';
+import { userSettingsRouter } from './routes/user-settings';
+import { startDailyCron } from './cron/daily-tick';
 
 const app = new Hono<{ Variables: Variables }>().basePath('/api');
 
@@ -22,11 +25,16 @@ app.get('/health', async (c) => {
 // Mount via chaining so AppType carries the route types for Hono RPC.
 const routes = app
   .route('/quests', questsRouter)
-  .route('/campaigns', campaignsRouter);
+  .route('/campaigns', campaignsRouter)
+  .route('/recurring-quests', recurringQuestsRouter)
+  .route('/user', userSettingsRouter);
 
 const port = Number(process.env.PORT ?? 3001);
 serve({ fetch: app.fetch, port });
 console.log(`API → http://localhost:${port}/api/health`);
+
+// Daily streak-reset tick (03:00 UTC). Registered after the server is up.
+startDailyCron(db);
 
 export type AppType = typeof routes;
 export type Auth = typeof auth;
