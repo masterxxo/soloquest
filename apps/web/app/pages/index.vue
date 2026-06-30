@@ -1,307 +1,72 @@
 <script setup lang="ts">
-import { signOut } from '~/lib/auth-client';
+import { storeToRefs } from 'pinia';
 import {
   client,
   type Quest,
-  type CompleteResult,
   type QuestWithWarnings,
-  type Campaign,
-  type CampaignDetail,
-  type CampaignRow,
-  type RecurringQuest,
-  type RecurringQuestWithStreak,
-  type RecurringCompleteResult,
-  type Achievement,
+  type CompleteResult,
 } from '~/lib/api-client';
-import { CAMPAIGN_STATUS_LABEL, CAMPAIGN_STATUS_COLOR } from '~/composables/campaignStatus';
-import { usePlayerStore } from '~/stores/player';
+import { useQuestsStore } from '~/stores/quests';
 
-// Session stays the source of truth; the store is a projection of session.user.
-const { data: session } = await useAuthSession();
-const player = usePlayerStore();
-watchEffect(() => player.hydrate(session.value?.user));
+const quests = useQuestsStore();
+const { activeQuests } = storeToRefs(quests);
 
-// Quests are fetched CLIENT-SIDE on purpose (per-user, behind login — no SSR benefit,
-// and it avoids the server baseURL / hydration quirks of the session fetch).
-const { data: activeQuests, pending, error } = await useAsyncData(
-  'active-quests',
-  async () => {
-    const res = await client.api.quests.$get({
-      query: { status: 'active', include: 'subTasks' },
+// Counts/lists come from the shared store; the layout already loaded them, but calling
+// load() here too makes the page safe to hit directly (it self-guards re-fetches).
+onMounted(() => { quests.load(); });
+
+// ── Quick-add ─────────────────────────────────────────────────────────────────
+// A title-only capture: posts an E-rank quest (description mirrors the title) so it
+// lands in STANDING ORDERS immediately. The full form is one click away for details.
+const quickTitle = ref('');
+const quickAdding = ref(false);
+async function quickAdd() {
+  const title = quickTitle.value.trim();
+  if (!title || quickAdding.value) return;
+  quickAdding.value = true;
+  try {
+    const res = await client.api.quests.$post({
+      json: { title, description: title, difficulty: 'E', deadline: null },
     });
-    if (!res.ok) throw new Error('Failed to load quests');
-    return res.json();
-  },
-  { server: false, default: () => [] as Quest[] },
-);
-
-// Campaigns are fetched client-side too (same per-user, behind-login rationale).
-const { data: campaigns } = await useAsyncData(
-  'campaigns',
-  async () => {
-    const res = await client.api.campaigns.$get();
-    if (!res.ok) return [];
-    return res.json();
-  },
-  { server: false, default: () => [] as Campaign[] },
-);
-
-// Recurring quests — fetched client-side too (same per-user, behind-login rationale).
-// Each row already carries its streak + today flags (derived server-side in the user's
-// timezone), so the cards need no extra calls.
-const { data: recurringQuests, refresh: refreshRecurring } = await useAsyncData(
-  'recurring-quests',
-  async () => {
-    const res = await client.api['recurring-quests'].$get();
-    if (!res.ok) return [];
-    return res.json();
-  },
-  { server: false, default: () => [] as RecurringQuestWithStreak[] },
-);
-
-// Quests panel has two tabs: one-off quests (grouped by deadline) and recurring quests.
-const questsTab = ref<'quests' | 'recurring'>('quests');
-
-// null → campaign list view; set → campaign detail view.
-const selectedCampaign = ref<CampaignDetail | null>(null);
-
-async function openCampaign(id: string) {
-  const res = await client.api.campaigns[':id'].$get({ param: { id } });
-  if (res.ok) selectedCampaign.value = await res.json();
-}
-function backToCampaignList() { selectedCampaign.value = null; }
-
-// Resolve a quest's campaignId to a campaign name (from the loaded list) for display.
-const campaignNameById = computed(() => {
-  const map = new Map<string, string>();
-  for (const c of campaigns.value ?? []) map.set(c.id, c.title);
-  return map;
-});
-function campaignName(id: string | null | undefined): string | null {
-  return id ? campaignNameById.value.get(id) ?? null : null;
+    if (!res.ok) return;
+    quests.addQuest(await res.json());
+    quickTitle.value = '';
+  } finally {
+    quickAdding.value = false;
+  }
 }
 
-// New-campaign form lives in CampaignForm; here we just toggle it and absorb the result.
-const showNewCampaignForm = ref(false);
-
-function onCampaignCreated(created: CampaignRow) {
-  // POST returns the row without questCount; a brand-new campaign has 0 quests.
-  campaigns.value = [{ ...created, questCount: 0 }, ...(campaigns.value ?? [])];
-  showNewCampaignForm.value = false;
-}
-
-// Campaign edited (title/description/rank/deadline) via CampaignForm in the detail view.
-function onCampaignSaved(updated: CampaignRow) {
-  if (selectedCampaign.value?.id === updated.id)
-    selectedCampaign.value = { ...selectedCampaign.value, ...updated };
-  campaigns.value = (campaigns.value ?? []).map((c) =>
-    c.id === updated.id ? { ...c, ...updated } : c,
-  );
-}
-
-// Format a JSON-serialised date for the campaign cards / labels.
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString();
-}
-
-async function completeCampaign() {
-  if (!selectedCampaign.value) return;
-  const id = selectedCampaign.value.id;
-  const res = await client.api.campaigns[':id'].complete.$post({ param: { id } });
-  if (!res.ok) return;
-  const updated = await res.json();
-  selectedCampaign.value = { ...selectedCampaign.value, status: updated.status, completedAt: updated.completedAt };
-  campaigns.value = (campaigns.value ?? []).map((c) =>
-    c.id === id ? { ...c, status: updated.status, completedAt: updated.completedAt } : c,
-  );
-}
-
-// Manual "Begin Operation": active → clearing.
-async function startCampaign() {
-  if (!selectedCampaign.value) return;
-  const id = selectedCampaign.value.id;
-  const res = await client.api.campaigns[':id'].start.$post({ param: { id } });
-  if (!res.ok) return;
-  const updated = await res.json();
-  selectedCampaign.value = { ...selectedCampaign.value, status: updated.status };
-  campaigns.value = (campaigns.value ?? []).map((c) =>
-    c.id === id ? { ...c, status: updated.status } : c,
-  );
-}
-
-// Mirror the server's auto-transition: completing a quest in an untouched (active)
-// campaign moves it to 'clearing'. Applied client-side so state stays in sync
-// without a refetch.
-function bumpCampaignToClearing(campaignId: string | null | undefined) {
-  if (!campaignId) return;
-  if (selectedCampaign.value?.id === campaignId && selectedCampaign.value.status === 'active')
-    selectedCampaign.value = { ...selectedCampaign.value, status: 'clearing' };
-  campaigns.value = (campaigns.value ?? []).map((c) =>
-    c.id === campaignId && c.status === 'active' ? { ...c, status: 'clearing' } : c,
-  );
-}
-
-// Drop a quest from the open campaign's detail list, if it's the one shown. Used
-// when a quest is completed/deleted from the quest-detail panel (which may have
-// been opened from inside the campaign view).
-function removeCampaignQuest(id: string) {
-  if (!selectedCampaign.value?.quests.some((q) => q.id === id)) return;
-  selectedCampaign.value = {
-    ...selectedCampaign.value,
-    quests: selectedCampaign.value.quests.filter((q) => q.id !== id),
-  };
-}
-
-// Handlers for the QuestCards shown inside a campaign's detail view. They keep the
-// selected campaign's quest list in sync (it's separate from activeQuests).
-function onCampaignQuestCompleted(result: CompleteResult) {
-  player.applyProgress(result.player);
-  if (result.leveledUp) showLevelUp(result.player.level);
-  if (!selectedCampaign.value) return;
-  selectedCampaign.value = {
-    ...selectedCampaign.value,
-    quests: selectedCampaign.value.quests.filter((q) => q.id !== result.quest.id),
-  };
-  bumpCampaignToClearing(result.quest.campaignId);
-}
-function onCampaignQuestDeleted(id: string) {
-  if (!selectedCampaign.value) return;
-  selectedCampaign.value = {
-    ...selectedCampaign.value,
-    quests: selectedCampaign.value.quests.filter((q) => q.id !== id),
-  };
-}
-function onCampaignQuestUpdated(result: QuestWithWarnings) {
-  if (result.warnings.length) showWarnings(result.warnings);
-  if (!selectedCampaign.value) return;
-  selectedCampaign.value = {
-    ...selectedCampaign.value,
-    // Merge so nested subTasks (absent from the PATCH response) are preserved.
-    quests: selectedCampaign.value.quests.map((q) =>
-      q.id === result.quest.id ? { ...q, ...result.quest } : q,
-    ),
-  };
-}
-
-// New-quest form is toggled from the Quests panel header (hidden by default).
+// ── New-quest form (full) ───────────────────────────────────────────────────────
 const showNewQuestForm = ref(false);
-
+const newQuestOrigin = ref<{ x: number; y: number } | null>(null);
+function openNewQuestForm(event?: MouseEvent) {
+  newQuestOrigin.value = originFrom(event);
+  showNewQuestForm.value = true;
+}
 function onCreated(result: QuestWithWarnings) {
-  activeQuests.value = [result.quest, ...(activeQuests.value ?? [])];
-  if (result.warnings.length) showWarnings(result.warnings);
+  quests.addQuest(result);
   showNewQuestForm.value = false;
 }
 
-function onCompleted(result: CompleteResult) {
-  // The quest is now completed → drop it from the active list.
-  activeQuests.value = (activeQuests.value ?? []).filter((q) => q.id !== result.quest.id);
-  // Single source of player state, updated straight from the server response.
-  player.applyProgress(result.player);
-  if (result.leveledUp) showLevelUp(result.player.level);
-  // Keep an open campaign detail view in sync (detail panel can be opened from it).
-  removeCampaignQuest(result.quest.id);
-  // If the quest belonged to an untouched campaign, the server moved it to 'clearing'.
-  bumpCampaignToClearing(result.quest.campaignId);
-}
-
-function onDeleted(id: string) {
-  activeQuests.value = (activeQuests.value ?? []).filter((q) => q.id !== id);
-  removeCampaignQuest(id);
-}
-
-function onUpdated(result: QuestWithWarnings) {
-  activeQuests.value = (activeQuests.value ?? []).map((q) =>
-    // Merge so nested subTasks (absent from the PATCH response) are preserved.
-    q.id === result.quest.id ? { ...q, ...result.quest } : q,
-  );
-  if (result.warnings.length) showWarnings(result.warnings);
-  // Keep an open detail view in sync with the edit.
-  if (selectedQuest.value?.id === result.quest.id)
-    selectedQuest.value = { ...selectedQuest.value, ...result.quest };
-  // Keep an open campaign detail view in sync too (merge, preserving subTasks).
-  if (selectedCampaign.value?.quests.some((q) => q.id === result.quest.id))
-    selectedCampaign.value = {
-      ...selectedCampaign.value,
-      quests: selectedCampaign.value.quests.map((q) =>
-        q.id === result.quest.id ? { ...q, ...result.quest } : q,
-      ),
-    };
-}
-
-// ── Recurring quests ────────────────────────────────────────────────────────
-function onRecurringCompleted(result: RecurringCompleteResult) {
-  // Server-authoritative xp/level, same path as one-off quests.
-  player.applyProgress(result.player);
-  if (result.leveledUp) showLevelUp(result.player.level);
-  // Mark the quest done-for-today and fold in the refreshed streak counters. Merge
-  // onto the existing full streak row (the /complete payload only carries the three
-  // counters, not the whole row).
-  recurringQuests.value = (recurringQuests.value ?? []).map((rq) =>
-    rq.id === result.completion.recurringQuestId
-      ? {
-          ...rq,
-          streak: rq.streak ? { ...rq.streak, ...result.streak } : rq.streak,
-          isCompletedToday: true,
-        }
-      : rq,
-  );
-}
-
-function onRecurringDeleted(id: string) {
-  recurringQuests.value = (recurringQuests.value ?? []).filter((rq) => rq.id !== id);
-}
-
-function onRecurringUpdated(quest: RecurringQuest) {
-  // Bare row from PATCH — merge over the existing entry so streak/today flags survive.
-  recurringQuests.value = (recurringQuests.value ?? []).map((rq) =>
-    rq.id === quest.id ? { ...rq, ...quest } : rq,
-  );
-}
-
-// Newly-unlocked achievements, shown in a transient toast (parent owns the timer).
-const earnedAchievements = ref<Achievement[] | null>(null);
-let achievementsTimer: ReturnType<typeof setTimeout> | null = null;
-function onAchievementsEarned(achievements: Achievement[]) {
-  earnedAchievements.value = achievements;
-  if (achievementsTimer) clearTimeout(achievementsTimer);
-  achievementsTimer = setTimeout(() => { earnedAchievements.value = null; }, 5000);
-}
-
-// New-recurring-quest form, in its own panel stacked over the Quests panel.
-const showNewRecurringForm = ref(false);
-const newRecurringOrigin = ref<{ x: number; y: number } | null>(null);
-function openNewRecurringForm(event?: MouseEvent) {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    newRecurringOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  } else {
-    newRecurringOrigin.value = null;
-  }
-  showNewRecurringForm.value = true;
-}
-// The create response is just the bare quest (no timezone-derived today flags or streak
-// relation), so we refetch rather than fabricate those client-side — guaranteed correct,
-// and the freshly created row appears with its real isDueToday/streak.
-async function onRecurringCreated(_quest: RecurringQuest) {
-  showNewRecurringForm.value = false;
-  await refreshRecurring();
-}
-
-// Quest detail view — a panel stacked over the Quests list (like the new-quest form).
+// ── Quest detail ────────────────────────────────────────────────────────────────
 const selectedQuest = ref<Quest | null>(null);
 const questDetailOrigin = ref<{ x: number; y: number } | null>(null);
 function openQuestDetail(quest: Quest, event?: MouseEvent) {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    questDetailOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  } else {
-    questDetailOrigin.value = null;
-  }
+  questDetailOrigin.value = originFrom(event);
   selectedQuest.value = quest;
 }
-// Completing or deleting from the detail view also closes it (the quest is gone).
+
+function onCompleted(result: CompleteResult) {
+  quests.applyCompleted(result);
+}
+function onDeleted(id: string) {
+  quests.removeQuest(id);
+}
+function onUpdated(result: QuestWithWarnings) {
+  quests.applyUpdated(result);
+  if (selectedQuest.value?.id === result.quest.id)
+    selectedQuest.value = { ...selectedQuest.value, ...result.quest };
+}
 function onDetailCompleted(result: CompleteResult) {
   onCompleted(result);
   selectedQuest.value = null;
@@ -311,8 +76,17 @@ function onDetailDeleted(id: string) {
   selectedQuest.value = null;
 }
 
-// Group top-level quests into day-sections by deadline: an "overdue" bucket first,
-// then dated buckets (soonest → latest), then deadline-less "standing orders" last.
+// Viewport point a modal grows out of — the centre of the element that opened it.
+function originFrom(event?: MouseEvent): { x: number; y: number } | null {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  return null;
+}
+
+// ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
   key: string; // "overdue" | "YYYY-MM-DD" | "standing"
   label: string;
@@ -330,7 +104,7 @@ function dateKey(d: Date): string {
 
 const questGroups = computed<QuestGroup[]>(() => {
   // Only top-level quests; sub-tasks render nested inside their parent's QuestCard.
-  const quests = (activeQuests.value ?? []).filter((q) => q.parentId == null);
+  const list = (activeQuests.value ?? []).filter((q) => q.parentId == null);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -340,7 +114,7 @@ const questGroups = computed<QuestGroup[]>(() => {
   let standing: Quest[] | null = null;
   const dated = new Map<string, Quest[]>();
 
-  for (const q of quests) {
+  for (const q of list) {
     if (!q.deadline) {
       (standing ??= []).push(q);
       continue;
@@ -359,16 +133,13 @@ const questGroups = computed<QuestGroup[]>(() => {
   const groups: QuestGroup[] = [];
 
   if (overdue) {
-    overdue.sort(
-      (a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime(),
-    );
+    overdue.sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime());
     groups.push({ key: 'overdue', label: 'OVERDUE', isOverdue: true, quests: overdue });
   }
 
   for (const key of [...dated.keys()].sort()) {
     const bucket = dated.get(key)!;
     bucket.sort((a, b) => a.title.localeCompare(b.title));
-    // key is "YYYY-MM-DD"; build a local date for label formatting.
     const [y, m, day] = key.split('-').map(Number);
     const d = new Date(y!, m! - 1, day!);
     const datePart = d
@@ -376,329 +147,61 @@ const questGroups = computed<QuestGroup[]>(() => {
       .toUpperCase();
     const weekday = d.toLocaleDateString('pl-PL', { weekday: 'long' }).toUpperCase();
     const label =
-      key === todayKey
-        ? `TODAY · ${datePart} · ${weekday}`
-        : `${datePart} · ${weekday}`;
+      key === todayKey ? `TODAY · ${datePart} · ${weekday}` : `${datePart} · ${weekday}`;
     groups.push({ key, label, isOverdue: false, quests: bucket });
   }
 
   if (standing) {
-    standing.sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-    groups.push({
-      key: 'standing',
-      label: 'STANDING ORDERS',
-      isOverdue: false,
-      quests: standing,
-    });
+    standing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    groups.push({ key: 'standing', label: 'STANDING ORDERS', isOverdue: false, quests: standing });
   }
 
   return groups;
 });
-
-// Lightweight "System"-style level-up feedback (no engine animations).
-const levelUpTo = ref<number | null>(null);
-let levelUpTimer: ReturnType<typeof setTimeout> | null = null;
-function showLevelUp(level: number) {
-  levelUpTo.value = level;
-  if (levelUpTimer) clearTimeout(levelUpTimer);
-  levelUpTimer = setTimeout(() => { levelUpTo.value = null; }, 3500);
-}
-// Transient rank-warning toast (server flags quests that out-rank their container).
-const rankWarnings = ref<string[]>([]);
-let warningsTimer: ReturnType<typeof setTimeout> | null = null;
-function showWarnings(warnings: string[]) {
-  rankWarnings.value = warnings;
-  if (warningsTimer) clearTimeout(warningsTimer);
-  warningsTimer = setTimeout(() => { rankWarnings.value = []; }, 4000);
-}
-
-onBeforeUnmount(() => {
-  if (levelUpTimer) clearTimeout(levelUpTimer);
-  if (warningsTimer) clearTimeout(warningsTimer);
-  if (achievementsTimer) clearTimeout(achievementsTimer);
-});
-
-const loggingOut = ref(false);
-async function onSignOut() {
-  loggingOut.value = true;
-  await signOut();
-  await refreshAuthSession();
-  await navigateTo('/login');
-}
-
-// Which hub panel (if any) is open. Items is intentionally inert (coming later).
-type Panel = 'status' | 'quests' | 'campaigns' | 'glossary';
-const activePanel = ref<Panel | null>(null);
-const PANEL_TITLES: Record<Panel, string> = {
-  status: 'Status',
-  quests: 'Quests',
-  campaigns: 'Campaigns',
-  glossary: 'Glossary',
-};
-const panelTitle = computed(() => (activePanel.value ? PANEL_TITLES[activePanel.value] : ''));
-// Wider frame for the list-heavy / two-pane views; default 540 elsewhere.
-const panelMaxWidth = computed(() => {
-  if (activePanel.value === 'quests') return 760;
-  if (activePanel.value === 'campaigns' && selectedCampaign.value) return 980;
-  return undefined;
-});
-
-// Viewport point the panel grows out of — the centre of the icon that opened it.
-const panelOrigin = ref<{ x: number; y: number } | null>(null);
-function openPanel(panel: Panel, event?: MouseEvent) {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    panelOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  } else {
-    panelOrigin.value = null;
-  }
-  activePanel.value = panel;
-}
-function closePanel() { activePanel.value = null; }
-
-// The new-quest form lives in its own panel, stacked over the Quests panel.
-const newQuestOrigin = ref<{ x: number; y: number } | null>(null);
-function openNewQuestForm(event?: MouseEvent) {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    newQuestOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  } else {
-    newQuestOrigin.value = null;
-  }
-  showNewQuestForm.value = true;
-}
-
-// XP fill for the Status panel bar, clamped to [0, 100].
-const xpPercent = computed(() => {
-  const { current, needed } = player.progress;
-  if (!needed) return 0;
-  return Math.min(100, Math.max(0, (current / needed) * 100));
-});
 </script>
 
 <template>
-  <div class="screen">
-    <TheTopBar :logging-out="loggingOut" @signout="onSignOut" />
-
-    <HubCharacter />
-
-    <!-- Hub icons -->
-    <HubIcon label="Status" x="15%" y="32%" @select="openPanel('status', $event)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-      </svg>
-    </HubIcon>
-
-    <HubIcon label="Quests" x="15%" y="62%" @select="openPanel('quests', $event)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="5" y="3" width="14" height="18" rx="2" />
-        <line x1="8.5" y1="8" x2="15.5" y2="8" />
-        <line x1="8.5" y1="12" x2="15.5" y2="12" />
-        <line x1="8.5" y1="16" x2="13" y2="16" />
-      </svg>
-    </HubIcon>
-
-    <HubIcon label="Campaigns" x="85%" y="32%" @select="openPanel('campaigns', $event)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3l7 2.5V11c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V5.5L12 3z" />
-        <path d="M9 12l2 2 4-4" />
-      </svg>
-    </HubIcon>
-
-    <HubIcon label="Glossary" x="85%" y="62%" @select="openPanel('glossary', $event)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 6c-1.5-1.2-3.5-1.8-6-1.8V18c2.5 0 4.5.6 6 1.8" />
-        <path d="M12 6c1.5-1.2 3.5-1.8 6-1.8V18c-2.5 0-4.5.6-6 1.8" />
-        <line x1="12" y1="6" x2="12" y2="19.8" />
-      </svg>
-    </HubIcon>
-
-    <HubIcon label="Items" x="50%" y="90%" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="#8b78e0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3l7 6-7 12-7-12 7-6z" />
-        <path d="M5 9h14" />
-      </svg>
-    </HubIcon>
-
-    <!-- Hub panel overlay -->
-    <HubPanel
-      v-if="activePanel"
-      :title="panelTitle"
-      :origin="panelOrigin"
-      :max-width="panelMaxWidth"
-      @close="closePanel"
-    >
-      <!-- Header actions per panel -->
-      <template #actions>
-        <button
-          v-if="activePanel === 'quests' && questsTab === 'quests'"
-          type="button"
-          class="hdr-btn"
-          @click="openNewQuestForm"
-        >
-          + New Quest
-        </button>
-        <button
-          v-if="activePanel === 'quests' && questsTab === 'recurring'"
-          type="button"
-          class="hdr-btn"
-          @click="openNewRecurringForm"
-        >
-          + New Recurring Quest
-        </button>
-        <template v-else-if="activePanel === 'campaigns'">
-          <button v-if="selectedCampaign" type="button" class="hdr-btn" @click="backToCampaignList">
-            ← Back
-          </button>
-          <button v-else type="button" class="hdr-btn" @click="showNewCampaignForm = !showNewCampaignForm">
-            {{ showNewCampaignForm ? '✕ Cancel' : '+ New Campaign' }}
-          </button>
-        </template>
-      </template>
-
-      <!-- Status -->
-      <template v-if="activePanel === 'status'">
-        <div class="stat-row"><span>Name</span><span>{{ player.name ?? 'Hunter' }}</span></div>
-        <div class="stat-row"><span>Level</span><span>{{ player.level }}</span></div>
-        <div class="stat-xp">
-          <div class="stat-xp-head">
-            <span>XP</span>
-            <span>{{ player.progress.current }} / {{ player.progress.needed }}</span>
-          </div>
-          <XpBar :percent="xpPercent" />
-        </div>
-        <div class="stat-row"><span>Quests completed</span><span>0</span></div>
-        <div class="stat-row"><span>Active quests</span><span>{{ activeQuests?.length ?? 0 }}</span></div>
-      </template>
-
-      <!-- Quests -->
-      <template v-else-if="activePanel === 'quests'">
-        <div class="tab-switch">
-          <button
-            type="button"
-            :class="{ 'tab-switch__btn--active': questsTab === 'quests' }"
-            class="tab-switch__btn"
-            @click="questsTab = 'quests'"
-          >
-            Quests
-          </button>
-          <button
-            type="button"
-            :class="{ 'tab-switch__btn--active': questsTab === 'recurring' }"
-            class="tab-switch__btn"
-            @click="questsTab = 'recurring'"
-          >
-            Recurring
-          </button>
-        </div>
-
-        <!-- Tab 1 — one-off quests grouped by deadline -->
-        <template v-if="questsTab === 'quests'">
-          <p v-if="pending" class="hint">Loading quests…</p>
-          <p v-else-if="error" class="hint err">Could not load quests.</p>
-          <div v-else class="quest-groups">
-            <section
-              v-for="group in questGroups"
-              :key="group.key"
-              class="quest-group"
-            >
-              <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
-                {{ group.label }}
-              </div>
-              <div class="group-quests">
-                <QuestCard
-                  v-for="q in group.quests"
-                  :key="q.id"
-                  :quest="q"
-                  selectable
-                  :campaign-name="campaignName(q.campaignId)"
-                  @open="openQuestDetail"
-                  @completed="onCompleted"
-                  @deleted="onDeleted"
-                  @updated="onUpdated"
-                />
-              </div>
-            </section>
-            <p v-if="!questGroups.length" class="hint">No active quests.</p>
-          </div>
-        </template>
-
-        <!-- Tab 2 — recurring quests -->
-        <template v-else-if="questsTab === 'recurring'">
-          <div class="quest-list">
-            <p v-if="!recurringQuests?.length" class="hint">
-              No recurring quests yet. Create one above.
-            </p>
-            <RecurringQuestCard
-              v-for="rq in recurringQuests"
-              :key="rq.id"
-              :quest="rq"
-              @completed="onRecurringCompleted"
-              @deleted="onRecurringDeleted"
-              @updated="onRecurringUpdated"
-              @achievements-earned="onAchievementsEarned"
-            />
-          </div>
-        </template>
-      </template>
-
-      <!-- Campaigns -->
-      <template v-else-if="activePanel === 'campaigns'">
-        <!-- State 1 — campaign list -->
-        <template v-if="!selectedCampaign">
-          <CampaignForm v-if="showNewCampaignForm" mode="create" @created="onCampaignCreated" />
-
-          <div class="quest-list">
-            <p v-if="!campaigns?.length" class="hint">No campaigns yet. Start one above.</p>
-            <button
-              v-for="c in campaigns"
-              :key="c.id"
-              type="button"
-              class="campaign-card"
-              @click="openCampaign(c.id)"
-            >
-              <span class="rank-badge">{{ c.difficulty }}</span>
-              <span class="campaign-name">{{ c.title }}</span>
-              <span class="campaign-meta">
-                <span
-                  class="campaign-status"
-                  :style="{ color: CAMPAIGN_STATUS_COLOR[c.status] }"
-                >
-                  {{ CAMPAIGN_STATUS_LABEL[c.status] }}
-                </span>
-                <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
-                <span v-if="c.deadline" class="campaign-deadline">⌛ {{ fmtDate(c.deadline) }}</span>
-              </span>
-            </button>
-          </div>
-        </template>
-
-        <!-- State 2 — campaign detail (wide two-pane view) -->
-        <CampaignView
-          v-else
-          :campaign="selectedCampaign"
-          @complete="completeCampaign"
-          @start="startCampaign"
-          @saved="onCampaignSaved"
-          @quest-open="openQuestDetail"
-          @quest-completed="onCampaignQuestCompleted"
-          @quest-deleted="onCampaignQuestDeleted"
-          @quest-updated="onCampaignQuestUpdated"
+  <div class="page">
+    <header class="page-head">
+      <h1 class="page-title">Quests</h1>
+      <form class="quick-add" @submit.prevent="quickAdd">
+        <input
+          v-model="quickTitle"
+          type="text"
+          class="quick-input"
+          placeholder="Quick add a quest…"
+          maxlength="255"
         />
-      </template>
+        <button type="submit" class="quick-btn" :disabled="quickAdding || !quickTitle.trim()">
+          Add
+        </button>
+        <button type="button" class="hdr-btn" @click="openNewQuestForm">+ New Quest</button>
+      </form>
+    </header>
 
-      <!-- Glossary -->
-      <template v-else>
-        <p class="coming-soon">— Coming soon —</p>
-      </template>
-    </HubPanel>
+    <div class="quest-groups">
+      <section v-for="group in questGroups" :key="group.key" class="quest-group">
+        <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
+          {{ group.label }}
+        </div>
+        <div class="group-quests">
+          <QuestCard
+            v-for="q in group.quests"
+            :key="q.id"
+            :quest="q"
+            selectable
+            :campaign-name="quests.campaignName(q.campaignId)"
+            @open="openQuestDetail"
+            @completed="onCompleted"
+            @deleted="onDeleted"
+            @updated="onUpdated"
+          />
+        </div>
+      </section>
+      <p v-if="!questGroups.length" class="hint">No active quests. Add your first above.</p>
+    </div>
 
-    <!-- New-quest form in its own panel, stacked over the Quests panel. -->
+    <!-- New-quest form modal. -->
     <HubPanel
       v-if="showNewQuestForm"
       title="New Quest"
@@ -708,18 +211,7 @@ const xpPercent = computed(() => {
       <QuestForm mode="create" @created="onCreated" />
     </HubPanel>
 
-    <!-- New-recurring-quest form in its own panel, stacked over the Quests panel. -->
-    <HubPanel
-      v-if="showNewRecurringForm"
-      title="New Recurring Quest"
-      :origin="newRecurringOrigin"
-      @close="showNewRecurringForm = false"
-    >
-      <RecurringQuestForm mode="create" @created="onRecurringCreated" />
-    </HubPanel>
-
-    <!-- Single-quest detail — a wide, two-pane modal (main column + details rail),
-         stacked over the Quests panel. -->
+    <!-- Single-quest detail — wide two-pane modal. -->
     <HubPanel
       v-if="selectedQuest"
       title="Quest"
@@ -729,54 +221,61 @@ const xpPercent = computed(() => {
     >
       <QuestDetail
         :quest="selectedQuest"
-        :campaign-name="campaignName(selectedQuest.campaignId)"
+        :campaign-name="quests.campaignName(selectedQuest.campaignId)"
         @completed="onDetailCompleted"
         @deleted="onDetailDeleted"
         @updated="onUpdated"
       />
     </HubPanel>
-
-    <LevelUpToast :level="levelUpTo" />
-    <RankWarningToast :warnings="rankWarnings" />
-    <AchievementToast :achievements="earnedAchievements" />
   </div>
 </template>
 
 <style scoped>
-.screen {
-  position: relative;
-  width: 100%;
-  min-height: 100vh;
-  overflow: hidden;
-}
-
-/* Status panel body */
-.stat-row {
+.page { display: flex; flex-direction: column; gap: 1.25rem; }
+.page-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 1.05rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #efeaff;
+}
+.quick-add { display: flex; align-items: center; gap: 0.5rem; }
+.quick-input {
+  background: rgba(14, 9, 30, 0.7);
+  border: 1px solid #2a2050;
+  color: #ece8fb;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+  min-width: 200px;
+}
+.quick-input:focus { outline: none; border-color: #7c5ce8; }
+.quick-btn,
+.hdr-btn {
+  background: transparent;
+  border: 1px solid #2a2050;
   color: #d0c8f8;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid rgba(42, 32, 80, 0.6);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
 }
-.stat-row span:first-child { color: #8174b8; }
-.stat-xp { display: flex; flex-direction: column; gap: 0.5rem; }
-.stat-xp-head { display: flex; justify-content: space-between; font-size: 0.9rem; color: #8174b8; }
+.quick-btn { border-color: #7c5ce8; background: rgba(124, 92, 232, 0.12); }
+.quick-btn:hover:not(:disabled),
+.hdr-btn:hover { border-color: #7c5ce8; }
+.quick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Quests panel body */
-.quest-list { display: flex; flex-direction: column; gap: 0.7rem; }
-
-/* Quests grouped into day-sections */
-.quest-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.quest-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
+.quest-groups { display: flex; flex-direction: column; gap: 1.25rem; }
+.quest-group { display: flex; flex-direction: column; gap: 0.5rem; }
 .group-header {
   font-size: 0.7rem;
   letter-spacing: 0.18em;
@@ -785,93 +284,7 @@ const xpPercent = computed(() => {
   padding-bottom: 0.4rem;
   border-bottom: 1px solid rgba(74, 61, 122, 0.3);
 }
-.group-header--overdue {
-  color: #c0543a;
-  border-bottom-color: rgba(192, 84, 58, 0.3);
-}
-.group-quests {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
+.group-header--overdue { color: #c0543a; border-bottom-color: rgba(192, 84, 58, 0.3); }
+.group-quests { display: flex; flex-direction: column; gap: 0.5rem; }
 .hint { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-.hint.err { color: #ff8080; }
-
-.coming-soon { margin: 1rem 0; text-align: center; font-size: 0.85rem; color: #4a3d7a; }
-
-/* Campaigns panel */
-
-.campaign-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.85rem 1rem;
-  text-align: left;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-  color: #ece8fb;
-  cursor: pointer;
-}
-.campaign-card:hover { border-color: #7c5ce8; }
-.rank-badge {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  font-weight: 800;
-  background: #0a0618;
-  border: 1px solid #6a50c8;
-  color: #c9bcff;
-}
-.campaign-name { flex: 1 1 auto; font-size: 0.95rem; }
-.campaign-meta {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.2rem;
-}
-.campaign-status { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-.campaign-count { font-size: 0.75rem; color: #8174b8; }
-.campaign-deadline { font-size: 0.72rem; color: #6a5da0; }
-
-/* Header action buttons (HubPanel #actions slot) */
-.hdr-btn {
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.35rem 0.7rem;
-  cursor: pointer;
-}
-.hdr-btn:hover { border-color: #7c5ce8; }
-
-/* Quests panel tab switch (Quests / Recurring) */
-.tab-switch {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
-}
-.tab-switch__btn {
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #6a5da0;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0.45rem 1rem;
-  cursor: pointer;
-}
-.tab-switch__btn:hover { border-color: #7c5ce8; color: #d0c8f8; }
-.tab-switch__btn--active {
-  border-color: #7c5ce8;
-  color: #d0c8f8;
-  background: rgba(124, 92, 232, 0.1);
-}
 </style>

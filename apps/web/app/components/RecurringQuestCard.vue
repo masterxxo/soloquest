@@ -72,7 +72,7 @@ async function onComplete() {
 }
 
 async function onDelete() {
-  if (!confirm(`Delete recurring quest "${props.quest.title}"?`)) return;
+  if (!confirm(`Delete ritual "${props.quest.title}"?`)) return;
   deleting.value = true;
   errorMsg.value = null;
   try {
@@ -147,7 +147,7 @@ function onUpdated(quest: RecurringQuest) {
           class="delete"
           :disabled="completing || deleting"
           @click="onDelete"
-          aria-label="Delete recurring quest"
+          aria-label="Delete ritual"
         >
           {{ deleting ? '…' : '✕' }}
         </button>

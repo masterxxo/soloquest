@@ -83,7 +83,7 @@ async function onCreate() {
     },
   });
   if (!res.ok) {
-    errorMsg.value = 'Could not create recurring quest. Check the fields and try again.';
+    errorMsg.value = 'Could not create ritual. Check the fields and try again.';
     return;
   }
   const { quest } = await res.json();
@@ -130,7 +130,7 @@ async function onEdit() {
   });
   if (!res.ok) {
     errorMsg.value =
-      res.status === 409 ? 'This recurring quest can no longer be edited.' : 'Could not save changes.';
+      res.status === 409 ? 'This ritual can no longer be edited.' : 'Could not save changes.';
     return;
   }
   const quest = await res.json();
@@ -156,7 +156,7 @@ async function onSubmit() {
 
 <template>
   <form class="quest-form" @submit.prevent="onSubmit">
-    <p class="tag">{{ mode === 'edit' ? '[ EDIT RECURRING QUEST ]' : '[ NEW RECURRING QUEST ]' }}</p>
+    <p class="tag">{{ mode === 'edit' ? '[ EDIT RITUAL ]' : '[ NEW RITUAL ]' }}</p>
 
     <input v-model="title" type="text" placeholder="Title" required maxlength="255" />
     <textarea v-model="description" placeholder="Description (optional)" rows="2" />

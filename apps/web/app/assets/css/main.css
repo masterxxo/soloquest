@@ -1,0 +1,15 @@
+/* Page transition: subtle fade + slight lift. Deliberately not a full 3D page-flip —
+   that's tiring in daily use. The grimoire frame is part of the layout, so it stays
+   fixed while only the routed content animates. */
+.page-flip-enter-active,
+.page-flip-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.page-flip-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.page-flip-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}

@@ -2,7 +2,12 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  app: { head: { title: 'Solo Quest' } },
+  app: {
+    head: { title: 'Solo Quest' },
+    // The grimoire frame stays put; only the page content cross-fades + lifts.
+    pageTransition: { name: 'page-flip', mode: 'out-in' },
+  },
+  css: ['~/assets/css/main.css'],
   modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss'],
   runtimeConfig: { public: { apiBase: 'http://localhost:3001'}},
   nitro: {

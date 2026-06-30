@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { signIn } from '~/lib/auth-client';
 
+definePageMeta({ layout: 'auth' });
+
 const email = ref('');
 const password = ref('');
 const loading = ref(false);
