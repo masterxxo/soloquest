@@ -33,3 +33,34 @@ export type CampaignDetail = InferResponseType<
 >;
 // Bare campaign row (no questCount / quests) as returned by create and update.
 export type CampaignRow = InferResponseType<typeof client.api.campaigns.$post, 201>;
+
+// ── Recurring quests ────────────────────────────────────────────────────────
+// A recurring quest's stored row on its own, as returned bare by PATCH
+// /api/recurring-quests/:id (and nested as `quest` in the create response). Used for
+// the create/update emit payloads, which never carry streak/today data.
+export type RecurringQuest = InferResponseType<
+  (typeof client.api['recurring-quests'])[':id']['$patch'],
+  200
+>;
+
+// The list shape from GET /api/recurring-quests: every stored field plus the streak
+// relation and the two per-day flags the backend derives in the user's timezone.
+// Inferred 1:1 from the route, so `streak` is the full streak row (nullable relation),
+// not a hand-narrowed subset.
+export type RecurringQuestWithStreak = InferResponseType<
+  typeof client.api['recurring-quests']['$get']
+>[number];
+
+// POST /api/recurring-quests/:id/complete: completion row + the three streak counters
+// + new player xp/level + leveledUp + any achievements just crossed.
+export type RecurringCompleteResult = InferResponseType<
+  (typeof client.api['recurring-quests'])[':id']['complete']['$post'],
+  200
+>;
+
+// A single achievement record, taken straight from the /complete payload so it stays in
+// step with what the backend awards (id, type, threshold, xpBonus, title, description).
+export type Achievement = RecurringCompleteResult['newAchievements'][number];
+
+// GET /api/user/settings → the user's settings row (currently just timezone + stamps).
+export type UserSettings = InferResponseType<typeof client.api.user.settings.$get, 200>;

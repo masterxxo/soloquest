@@ -8,6 +8,10 @@ import {
   type Campaign,
   type CampaignDetail,
   type CampaignRow,
+  type RecurringQuest,
+  type RecurringQuestWithStreak,
+  type RecurringCompleteResult,
+  type Achievement,
 } from '~/lib/api-client';
 import { CAMPAIGN_STATUS_LABEL, CAMPAIGN_STATUS_COLOR } from '~/composables/campaignStatus';
 import { usePlayerStore } from '~/stores/player';
@@ -41,6 +45,22 @@ const { data: campaigns } = await useAsyncData(
   },
   { server: false, default: () => [] as Campaign[] },
 );
+
+// Recurring quests — fetched client-side too (same per-user, behind-login rationale).
+// Each row already carries its streak + today flags (derived server-side in the user's
+// timezone), so the cards need no extra calls.
+const { data: recurringQuests, refresh: refreshRecurring } = await useAsyncData(
+  'recurring-quests',
+  async () => {
+    const res = await client.api['recurring-quests'].$get();
+    if (!res.ok) return [];
+    return res.json();
+  },
+  { server: false, default: () => [] as RecurringQuestWithStreak[] },
+);
+
+// Quests panel has two tabs: one-off quests (grouped by deadline) and recurring quests.
+const questsTab = ref<'quests' | 'recurring'>('quests');
 
 // null → campaign list view; set → campaign detail view.
 const selectedCampaign = ref<CampaignDetail | null>(null);
@@ -208,6 +228,66 @@ function onUpdated(result: QuestWithWarnings) {
     };
 }
 
+// ── Recurring quests ────────────────────────────────────────────────────────
+function onRecurringCompleted(result: RecurringCompleteResult) {
+  // Server-authoritative xp/level, same path as one-off quests.
+  player.applyProgress(result.player);
+  if (result.leveledUp) showLevelUp(result.player.level);
+  // Mark the quest done-for-today and fold in the refreshed streak counters. Merge
+  // onto the existing full streak row (the /complete payload only carries the three
+  // counters, not the whole row).
+  recurringQuests.value = (recurringQuests.value ?? []).map((rq) =>
+    rq.id === result.completion.recurringQuestId
+      ? {
+          ...rq,
+          streak: rq.streak ? { ...rq.streak, ...result.streak } : rq.streak,
+          isCompletedToday: true,
+        }
+      : rq,
+  );
+}
+
+function onRecurringDeleted(id: string) {
+  recurringQuests.value = (recurringQuests.value ?? []).filter((rq) => rq.id !== id);
+}
+
+function onRecurringUpdated(quest: RecurringQuest) {
+  // Bare row from PATCH — merge over the existing entry so streak/today flags survive.
+  recurringQuests.value = (recurringQuests.value ?? []).map((rq) =>
+    rq.id === quest.id ? { ...rq, ...quest } : rq,
+  );
+}
+
+// Newly-unlocked achievements, shown in a transient toast (parent owns the timer).
+const earnedAchievements = ref<Achievement[] | null>(null);
+let achievementsTimer: ReturnType<typeof setTimeout> | null = null;
+function onAchievementsEarned(achievements: Achievement[]) {
+  earnedAchievements.value = achievements;
+  if (achievementsTimer) clearTimeout(achievementsTimer);
+  achievementsTimer = setTimeout(() => { earnedAchievements.value = null; }, 5000);
+}
+
+// New-recurring-quest form, in its own panel stacked over the Quests panel.
+const showNewRecurringForm = ref(false);
+const newRecurringOrigin = ref<{ x: number; y: number } | null>(null);
+function openNewRecurringForm(event?: MouseEvent) {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    newRecurringOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  } else {
+    newRecurringOrigin.value = null;
+  }
+  showNewRecurringForm.value = true;
+}
+// The create response is just the bare quest (no timezone-derived today flags or streak
+// relation), so we refetch rather than fabricate those client-side — guaranteed correct,
+// and the freshly created row appears with its real isDueToday/streak.
+async function onRecurringCreated(_quest: RecurringQuest) {
+  showNewRecurringForm.value = false;
+  await refreshRecurring();
+}
+
 // Quest detail view — a panel stacked over the Quests list (like the new-quest form).
 const selectedQuest = ref<Quest | null>(null);
 const questDetailOrigin = ref<{ x: number; y: number } | null>(null);
@@ -337,6 +417,7 @@ function showWarnings(warnings: string[]) {
 onBeforeUnmount(() => {
   if (levelUpTimer) clearTimeout(levelUpTimer);
   if (warningsTimer) clearTimeout(warningsTimer);
+  if (achievementsTimer) clearTimeout(achievementsTimer);
 });
 
 const loggingOut = ref(false);
@@ -455,12 +536,20 @@ const xpPercent = computed(() => {
       <!-- Header actions per panel -->
       <template #actions>
         <button
-          v-if="activePanel === 'quests'"
+          v-if="activePanel === 'quests' && questsTab === 'quests'"
           type="button"
           class="hdr-btn"
           @click="openNewQuestForm"
         >
           + New Quest
+        </button>
+        <button
+          v-if="activePanel === 'quests' && questsTab === 'recurring'"
+          type="button"
+          class="hdr-btn"
+          @click="openNewRecurringForm"
+        >
+          + New Recurring Quest
         </button>
         <template v-else-if="activePanel === 'campaigns'">
           <button v-if="selectedCampaign" type="button" class="hdr-btn" @click="backToCampaignList">
@@ -489,33 +578,73 @@ const xpPercent = computed(() => {
 
       <!-- Quests -->
       <template v-else-if="activePanel === 'quests'">
-        <p v-if="pending" class="hint">Loading quests…</p>
-        <p v-else-if="error" class="hint err">Could not load quests.</p>
-        <div v-else class="quest-groups">
-          <section
-            v-for="group in questGroups"
-            :key="group.key"
-            class="quest-group"
+        <div class="tab-switch">
+          <button
+            type="button"
+            :class="{ 'tab-switch__btn--active': questsTab === 'quests' }"
+            class="tab-switch__btn"
+            @click="questsTab = 'quests'"
           >
-            <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
-              {{ group.label }}
-            </div>
-            <div class="group-quests">
-              <QuestCard
-                v-for="q in group.quests"
-                :key="q.id"
-                :quest="q"
-                selectable
-                :campaign-name="campaignName(q.campaignId)"
-                @open="openQuestDetail"
-                @completed="onCompleted"
-                @deleted="onDeleted"
-                @updated="onUpdated"
-              />
-            </div>
-          </section>
-          <p v-if="!questGroups.length" class="hint">No active quests.</p>
+            Quests
+          </button>
+          <button
+            type="button"
+            :class="{ 'tab-switch__btn--active': questsTab === 'recurring' }"
+            class="tab-switch__btn"
+            @click="questsTab = 'recurring'"
+          >
+            Recurring
+          </button>
         </div>
+
+        <!-- Tab 1 — one-off quests grouped by deadline -->
+        <template v-if="questsTab === 'quests'">
+          <p v-if="pending" class="hint">Loading quests…</p>
+          <p v-else-if="error" class="hint err">Could not load quests.</p>
+          <div v-else class="quest-groups">
+            <section
+              v-for="group in questGroups"
+              :key="group.key"
+              class="quest-group"
+            >
+              <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
+                {{ group.label }}
+              </div>
+              <div class="group-quests">
+                <QuestCard
+                  v-for="q in group.quests"
+                  :key="q.id"
+                  :quest="q"
+                  selectable
+                  :campaign-name="campaignName(q.campaignId)"
+                  @open="openQuestDetail"
+                  @completed="onCompleted"
+                  @deleted="onDeleted"
+                  @updated="onUpdated"
+                />
+              </div>
+            </section>
+            <p v-if="!questGroups.length" class="hint">No active quests.</p>
+          </div>
+        </template>
+
+        <!-- Tab 2 — recurring quests -->
+        <template v-else-if="questsTab === 'recurring'">
+          <div class="quest-list">
+            <p v-if="!recurringQuests?.length" class="hint">
+              No recurring quests yet. Create one above.
+            </p>
+            <RecurringQuestCard
+              v-for="rq in recurringQuests"
+              :key="rq.id"
+              :quest="rq"
+              @completed="onRecurringCompleted"
+              @deleted="onRecurringDeleted"
+              @updated="onRecurringUpdated"
+              @achievements-earned="onAchievementsEarned"
+            />
+          </div>
+        </template>
       </template>
 
       <!-- Campaigns -->
@@ -579,6 +708,16 @@ const xpPercent = computed(() => {
       <QuestForm mode="create" @created="onCreated" />
     </HubPanel>
 
+    <!-- New-recurring-quest form in its own panel, stacked over the Quests panel. -->
+    <HubPanel
+      v-if="showNewRecurringForm"
+      title="New Recurring Quest"
+      :origin="newRecurringOrigin"
+      @close="showNewRecurringForm = false"
+    >
+      <RecurringQuestForm mode="create" @created="onRecurringCreated" />
+    </HubPanel>
+
     <!-- Single-quest detail — a wide, two-pane modal (main column + details rail),
          stacked over the Quests panel. -->
     <HubPanel
@@ -599,6 +738,7 @@ const xpPercent = computed(() => {
 
     <LevelUpToast :level="levelUpTo" />
     <RankWarningToast :warnings="rankWarnings" />
+    <AchievementToast :achievements="earnedAchievements" />
   </div>
 </template>
 
@@ -709,4 +849,29 @@ const xpPercent = computed(() => {
   cursor: pointer;
 }
 .hdr-btn:hover { border-color: #7c5ce8; }
+
+/* Quests panel tab switch (Quests / Recurring) */
+.tab-switch {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.tab-switch__btn {
+  background: transparent;
+  border: 1px solid #2a2050;
+  color: #6a5da0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+.tab-switch__btn:hover { border-color: #7c5ce8; color: #d0c8f8; }
+.tab-switch__btn--active {
+  border-color: #7c5ce8;
+  color: #d0c8f8;
+  background: rgba(124, 92, 232, 0.1);
+}
 </style>
