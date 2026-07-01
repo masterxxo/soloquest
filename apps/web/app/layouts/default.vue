@@ -134,8 +134,11 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
         <span class="absolute bottom-1.5 left-1.5 h-4 w-4 border-b-2 border-l-2 border-accent" />
         <span class="absolute bottom-1.5 right-1.5 h-4 w-4 border-b-2 border-r-2 border-accent" />
 
-        <div class="relative m-1.5 flex h-[calc(100%-12px)] flex-col rounded-[6px] border border-[#2a2050] p-5 md:p-6">
-          <header class="flex items-center gap-3.5 border-b border-[#2a2050] pb-3.5">
+        <div class="relative m-1.5 flex h-[calc(100%-12px)] flex-col overflow-hidden rounded-[6px] border border-[#2a2050] p-5 md:p-6">
+          <!-- Dryfująca mgła w środku strony (jak w modalach); dekoracyjna warstwa
+               tła, treść nad nią dzięki `relative z-[1]`. -->
+          <SmokeCanvas :density="1.5" :speed="0.6" />
+          <header class="relative z-[1] flex items-center gap-3.5 border-b border-[#2a2050] pb-3.5">
             <div class="relative shrink-0">
               <div class="flex h-11 w-11 items-end justify-center overflow-hidden rounded-lg border border-[#7c5ce8] bg-[#1a1140]">
                 <img src="/images/character.png" alt="" class="h-full w-full object-cover object-top" />
@@ -165,7 +168,7 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
             </div>
           </header>
 
-          <main class="mt-3.5 min-h-0 flex-1 overflow-y-auto">
+          <main class="relative z-[1] mt-3.5 min-h-0 flex-1 overflow-y-auto">
             <slot />
           </main>
         </div>
