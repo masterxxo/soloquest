@@ -130,11 +130,21 @@ function onDetailUpdated(result: QuestWithWarnings) {
 </script>
 
 <template>
-  <div class="page">
-    <header class="page-head">
-      <h1 class="page-title">Campaigns</h1>
-      <button v-if="selectedCampaign" type="button" class="hdr-btn" @click="backToList">← Back</button>
-      <button v-else type="button" class="hdr-btn" @click="showNewForm = !showNewForm">
+  <div class="flex flex-col gap-5">
+    <header class="flex items-center justify-between gap-4">
+      <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Campaigns</h1>
+      <button
+        v-if="selectedCampaign"
+        type="button"
+        class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
+        @click="backToList"
+      >← Back</button>
+      <button
+        v-else
+        type="button"
+        class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
+        @click="showNewForm = !showNewForm"
+      >
         {{ showNewForm ? '✕ Cancel' : '+ New Campaign' }}
       </button>
     </header>
@@ -143,23 +153,23 @@ function onDetailUpdated(result: QuestWithWarnings) {
     <template v-if="!selectedCampaign">
       <CampaignForm v-if="showNewForm" mode="create" @created="onCampaignCreated" />
 
-      <div class="campaign-list">
-        <p v-if="!campaigns.length" class="hint">No campaigns yet. Start one above.</p>
+      <div class="flex flex-col gap-[0.7rem]">
+        <p v-if="!campaigns.length" class="m-0 text-[0.85rem] text-line-soft">No campaigns yet. Start one above.</p>
         <button
           v-for="c in campaigns"
           :key="c.id"
           type="button"
-          class="campaign-card"
+          class="flex w-full cursor-pointer items-center gap-3 border border-line bg-[rgba(14,9,30,0.6)] px-4 py-[0.85rem] text-left text-ink-soft hover:border-accent"
           @click="openCampaign(c.id)"
         >
-          <span class="rank-badge">{{ c.difficulty }}</span>
-          <span class="campaign-name">{{ c.title }}</span>
-          <span class="campaign-meta">
-            <span class="campaign-status" :style="{ color: CAMPAIGN_STATUS_COLOR[c.status] }">
+          <span class="grid h-[1.9rem] w-[1.9rem] flex-none place-items-center border border-[#6a50c8] bg-panel font-extrabold text-[#c9bcff]">{{ c.difficulty }}</span>
+          <span class="flex-auto text-[0.95rem]">{{ c.title }}</span>
+          <span class="flex flex-none flex-col items-end gap-[0.2rem]">
+            <span class="text-[0.68rem] font-bold uppercase tracking-[0.1em]" :style="{ color: CAMPAIGN_STATUS_COLOR[c.status] }">
               {{ CAMPAIGN_STATUS_LABEL[c.status] }}
             </span>
-            <span class="campaign-count">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
-            <span v-if="c.deadline" class="campaign-deadline">⌛ {{ fmtDate(c.deadline) }}</span>
+            <span class="text-[0.75rem] text-ink-muted">{{ c.questCount }} quest{{ c.questCount === 1 ? '' : 's' }}</span>
+            <span v-if="c.deadline" class="text-[0.72rem] text-[#6a5da0]">⌛ {{ fmtDate(c.deadline) }}</span>
           </span>
         </button>
       </div>
@@ -196,59 +206,3 @@ function onDetailUpdated(result: QuestWithWarnings) {
     </HubPanel>
   </div>
 </template>
-
-<style scoped>
-.page { display: flex; flex-direction: column; gap: 1.25rem; }
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.page-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #efeaff;
-}
-.hdr-btn {
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.4rem 0.7rem;
-  cursor: pointer;
-}
-.hdr-btn:hover { border-color: #7c5ce8; }
-
-.campaign-list { display: flex; flex-direction: column; gap: 0.7rem; }
-.campaign-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.85rem 1rem;
-  text-align: left;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-  color: #ece8fb;
-  cursor: pointer;
-}
-.campaign-card:hover { border-color: #7c5ce8; }
-.rank-badge {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  font-weight: 800;
-  background: #0a0618;
-  border: 1px solid #6a50c8;
-  color: #c9bcff;
-}
-.campaign-name { flex: 1 1 auto; font-size: 0.95rem; }
-.campaign-meta { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
-.campaign-status { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-.campaign-count { font-size: 0.75rem; color: #8174b8; }
-.campaign-deadline { font-size: 0.72rem; color: #6a5da0; }
-.hint { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-</style>

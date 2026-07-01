@@ -8,6 +8,8 @@
 </template>
 
 <style>
+/* Globalne style dokumentu (:root, body) — celują w elementy spoza szablonu,
+   więc nie da się ich wyrazić klasami utility na `class`; zostają jako CSS. */
 :root {
   color-scheme: dark;
 }

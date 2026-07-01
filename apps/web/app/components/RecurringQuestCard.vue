@@ -96,7 +96,7 @@ function onUpdated(quest: RecurringQuest) {
 </script>
 
 <template>
-  <div class="quest-wrap">
+  <div class="flex flex-col gap-2">
     <RecurringQuestForm
       v-if="editing"
       mode="edit"
@@ -105,46 +105,67 @@ function onUpdated(quest: RecurringQuest) {
       @cancel="editing = false"
     />
 
-    <article v-else class="quest">
-      <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
+    <article
+      v-else
+      class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]"
+    >
+      <span
+        class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
+        :style="{ color: rankColor, borderColor: rankColor }"
+      >
         {{ quest.difficulty }}
       </span>
 
-      <div class="body">
-        <h3>{{ quest.title }}</h3>
-        <p class="recurrence">🔁 {{ recurrenceLabel }}</p>
-        <p v-if="quest.description" class="desc">{{ quest.description }}</p>
-        <div class="meta">
-          <span class="xp">+{{ RECURRING_XP }} XP</span>
-          <span class="streak">
+      <div class="min-w-0 flex-auto">
+        <h3 class="m-0 text-[0.95rem] text-ink-soft">{{ quest.title }}</h3>
+        <p class="mt-[0.15rem] text-[0.7rem] text-[#6a5da0]">🔁 {{ recurrenceLabel }}</p>
+        <p v-if="quest.description" class="mb-[0.3rem] mt-[0.2rem] line-clamp-2 text-[0.85rem] text-ink-muted">{{ quest.description }}</p>
+        <div class="flex flex-wrap gap-3 text-[0.75rem] text-ink-muted">
+          <span class="font-semibold text-accent-light">+{{ RECURRING_XP }} XP</span>
+          <span class="text-[#f0903c]">
             🔥 {{ quest.streak?.currentStreak ?? 0 }} streak ·
             {{ quest.streak?.totalCompletions ?? 0 }} total
           </span>
         </div>
-        <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
+        <p v-if="errorMsg" class="mt-[0.4rem] text-[0.75rem] text-danger-bright">{{ errorMsg }}</p>
       </div>
 
-      <div class="actions">
-        <button class="edit" :disabled="completing || deleting" @click="editing = true">
+      <div class="flex flex-none items-center gap-[0.4rem]">
+        <button
+          class="cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+          :disabled="completing || deleting"
+          @click="editing = true"
+        >
           Edit
         </button>
 
         <!-- Already done today → static badge instead of a button. -->
-        <span v-if="quest.isCompletedToday" class="done-badge">✓ Done today</span>
+        <span
+          v-if="quest.isCompletedToday"
+          class="border border-[#1f5a3a] bg-[rgba(63,191,111,0.08)] px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-[#3fbf6f]"
+          >✓ Done today</span
+        >
         <!-- Due and not yet done → live Complete button. -->
         <button
           v-else-if="quest.isDueToday"
-          class="complete"
+          class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
           @click="onComplete"
         >
           {{ completing ? '…' : 'Complete' }}
         </button>
         <!-- Not scheduled for today → disabled, with an explanatory tooltip. -->
-        <button v-else class="complete" disabled title="Not due today">Complete</button>
+        <button
+          v-else
+          class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+          disabled
+          title="Not due today"
+        >
+          Complete
+        </button>
 
         <button
-          class="delete"
+          class="cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
           @click="onDelete"
           aria-label="Delete ritual"
@@ -155,67 +176,3 @@ function onUpdated(quest: RecurringQuest) {
     </article>
   </div>
 </template>
-
-<style scoped>
-.quest-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
-.quest {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  padding: 0.6rem 0.8rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-  border-radius: 0;
-}
-.rank {
-  flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 0.9rem;
-  border: 1px solid;
-  border-radius: 0;
-  background: #0a0618;
-  text-shadow: 0 0 8px currentColor;
-}
-.body { flex: 1 1 auto; min-width: 0; }
-h3 { margin: 0; font-size: 0.95rem; color: #ece8fb; }
-.recurrence { margin: 0.15rem 0 0; font-size: 0.7rem; color: #6a5da0; }
-.desc {
-  margin: 0.2rem 0 0.3rem;
-  font-size: 0.85rem;
-  color: #8174b8;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8174b8; flex-wrap: wrap; }
-.xp { color: #9c7cff; font-weight: 600; }
-.streak { color: #f0903c; }
-.err { margin: 0.4rem 0 0; font-size: 0.75rem; color: #ff8080; }
-.actions { display: flex; gap: 0.4rem; flex: 0 0 auto; align-items: center; }
-button {
-  padding: 0.35rem 0.65rem;
-  border-radius: 0;
-  font-weight: 600;
-  font-size: 0.78rem;
-  cursor: pointer;
-  border: 1px solid #2a2050;
-}
-.edit { background: transparent; color: #d0c8f8; border-color: #2a2050; }
-.complete { background: linear-gradient(180deg, #6a4fd8, #4a35a8); color: #fff; border: none; }
-.delete { background: transparent; color: #ff8080; border-color: #5a2740; }
-.done-badge {
-  padding: 0.35rem 0.65rem;
-  font-weight: 600;
-  font-size: 0.78rem;
-  color: #3fbf6f;
-  border: 1px solid #1f5a3a;
-  background: rgba(63, 191, 111, 0.08);
-}
-button:hover:not(:disabled) { filter: brightness(1.1); }
-button:disabled { opacity: 0.55; cursor: not-allowed; }
-</style>

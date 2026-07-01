@@ -110,36 +110,59 @@ async function onSubmit() {
 </script>
 
 <template>
-  <form class="campaign-form" @submit.prevent="onSubmit">
-    <p class="tag">{{ mode === 'edit' ? '[ EDIT CAMPAIGN ]' : '[ NEW CAMPAIGN ]' }}</p>
+  <form class="flex flex-col gap-[0.7rem] border border-line bg-[rgba(14,9,30,0.6)] p-4" @submit.prevent="onSubmit">
+    <p class="m-0 text-[0.7rem] tracking-[0.3em] text-accent">{{ mode === 'edit' ? '[ EDIT CAMPAIGN ]' : '[ NEW CAMPAIGN ]' }}</p>
 
-    <input v-model="title" type="text" placeholder="Title" required maxlength="255" />
-    <textarea v-model="description" placeholder="Description (optional)" rows="2" />
+    <input
+      v-model="title"
+      type="text"
+      placeholder="Title"
+      required
+      maxlength="255"
+      class="border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+    />
+    <textarea
+      v-model="description"
+      placeholder="Description (optional)"
+      rows="2"
+      class="resize-y border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+    />
 
-    <div class="row">
-      <label>
+    <div class="flex gap-[0.7rem]">
+      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
         Rank
-        <select v-model="difficulty">
+        <select
+          v-model="difficulty"
+          class="border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        >
           <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
         </select>
       </label>
-      <label>
+      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
         Deadline
-        <input v-model="deadline" type="date" />
+        <input
+          v-model="deadline"
+          type="date"
+          class="border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        />
       </label>
     </div>
 
-    <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
+    <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
 
-    <div class="form-actions">
-      <button type="submit" :disabled="submitting">
+    <div class="flex gap-[0.6rem]">
+      <button
+        type="submit"
+        :disabled="submitting"
+        class="flex-1 cursor-pointer border-0 bg-gradient-to-b from-accent-deep to-accent-dark p-[0.6rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
+      >
         {{ submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create campaign' }}
       </button>
       <button
         v-if="mode === 'edit'"
         type="button"
-        class="cancel"
         :disabled="submitting"
+        class="flex-none cursor-pointer border border-line bg-transparent p-[0.6rem] font-semibold text-ink shadow-none disabled:cursor-not-allowed disabled:opacity-60"
         @click="emit('cancel')"
       >
         Cancel
@@ -147,58 +170,3 @@ async function onSubmit() {
     </div>
   </form>
 </template>
-
-<style scoped>
-.campaign-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 1rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-}
-.tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #7c5ce8; }
-input, textarea, select {
-  padding: 0.55rem 0.7rem;
-  background: #0a0618;
-  border: 1px solid #2a2050;
-  color: #ece8fb;
-  font: inherit;
-  font-size: 0.9rem;
-  outline: none;
-}
-input:focus, textarea:focus, select:focus {
-  border-color: #7c5ce8;
-  box-shadow: 0 0 0 2px rgba(124, 92, 232, 0.3);
-}
-textarea { resize: vertical; }
-.row { display: flex; gap: 0.7rem; }
-.row label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: #8174b8;
-}
-.err { margin: 0; font-size: 0.78rem; color: #ff8080; }
-.form-actions { display: flex; gap: 0.6rem; }
-button {
-  padding: 0.6rem;
-  flex: 1;
-  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
-}
-button.cancel {
-  flex: 0 0 auto;
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  box-shadow: none;
-}
-button:disabled { opacity: 0.6; cursor: not-allowed; }
-</style>

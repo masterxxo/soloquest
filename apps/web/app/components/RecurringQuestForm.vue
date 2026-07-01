@@ -155,22 +155,45 @@ async function onSubmit() {
 </script>
 
 <template>
-  <form class="quest-form" @submit.prevent="onSubmit">
-    <p class="tag">{{ mode === 'edit' ? '[ EDIT RITUAL ]' : '[ NEW RITUAL ]' }}</p>
+  <form
+    class="flex flex-col gap-[0.7rem] rounded-none border border-line bg-[rgba(14,9,30,0.6)] p-4"
+    @submit.prevent="onSubmit"
+  >
+    <p class="m-0 text-[0.7rem] tracking-[0.3em] text-accent">
+      {{ mode === 'edit' ? '[ EDIT RITUAL ]' : '[ NEW RITUAL ]' }}
+    </p>
 
-    <input v-model="title" type="text" placeholder="Title" required maxlength="255" />
-    <textarea v-model="description" placeholder="Description (optional)" rows="2" />
+    <input
+      v-model="title"
+      type="text"
+      placeholder="Title"
+      required
+      maxlength="255"
+      class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+    />
+    <textarea
+      v-model="description"
+      placeholder="Description (optional)"
+      rows="2"
+      class="resize-y rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+    />
 
-    <div class="row">
-      <label>
+    <div class="flex gap-[0.7rem]">
+      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
         Rank — always +{{ RECURRING_XP }} XP
-        <select v-model="difficulty">
+        <select
+          v-model="difficulty"
+          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        >
           <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
         </select>
       </label>
-      <label>
+      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
         Repeats
-        <select v-model="recurrenceType">
+        <select
+          v-model="recurrenceType"
+          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        >
           <option value="daily">Every day</option>
           <option value="every_x_days">Every N days</option>
           <option value="weekdays">On weekdays</option>
@@ -178,99 +201,56 @@ async function onSubmit() {
       </label>
     </div>
 
-    <label v-if="recurrenceType === 'every_x_days'" class="single">
+    <label
+      v-if="recurrenceType === 'every_x_days'"
+      class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted"
+    >
       Every N days
-      <input v-model.number="everyXDays" type="number" min="1" />
+      <input
+        v-model.number="everyXDays"
+        type="number"
+        min="1"
+        class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+      />
     </label>
 
-    <div v-else-if="recurrenceType === 'weekdays'" class="weekdays">
-      <label v-for="(day, i) in WEEKDAYS" :key="day" class="weekday">
-        <input v-model="selectedDays[i]" type="checkbox" />
+    <div
+      v-else-if="recurrenceType === 'weekdays'"
+      class="flex flex-wrap gap-x-[0.9rem] gap-y-[0.5rem] text-[0.78rem] text-ink-muted"
+    >
+      <label
+        v-for="(day, i) in WEEKDAYS"
+        :key="day"
+        class="flex cursor-pointer items-center gap-[0.35rem]"
+      >
+        <input
+          v-model="selectedDays[i]"
+          type="checkbox"
+          class="w-auto cursor-pointer rounded-none border border-line bg-panel p-0 text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        />
         {{ day }}
       </label>
     </div>
 
-    <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
+    <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
 
-    <div class="form-actions">
-      <button type="submit" :disabled="submitting">
+    <div class="flex gap-[0.6rem]">
+      <button
+        type="submit"
+        :disabled="submitting"
+        class="flex-1 cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark p-[0.6rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
+      >
         {{ submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Issue quest' }}
       </button>
-      <button v-if="mode === 'edit'" type="button" class="cancel" :disabled="submitting" @click="emit('cancel')">
+      <button
+        v-if="mode === 'edit'"
+        type="button"
+        :disabled="submitting"
+        class="flex-none cursor-pointer rounded-none border border-line bg-transparent p-[0.6rem] font-semibold text-ink shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+        @click="emit('cancel')"
+      >
         Cancel
       </button>
     </div>
   </form>
 </template>
-
-<style scoped>
-.quest-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 1rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-  border-radius: 0;
-}
-.tag { margin: 0; letter-spacing: 0.3em; font-size: 0.7rem; color: #7c5ce8; }
-input, textarea, select {
-  padding: 0.55rem 0.7rem;
-  background: #0a0618;
-  border: 1px solid #2a2050;
-  border-radius: 0;
-  color: #ece8fb;
-  font: inherit;
-  font-size: 0.9rem;
-  outline: none;
-}
-input:focus, textarea:focus, select:focus {
-  border-color: #7c5ce8;
-  box-shadow: 0 0 0 2px rgba(124, 92, 232, 0.3);
-}
-textarea { resize: vertical; }
-.row { display: flex; gap: 0.7rem; }
-.row label, .single {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: #8174b8;
-}
-.weekdays {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.9rem;
-  font-size: 0.78rem;
-  color: #8174b8;
-}
-.weekday {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-}
-.weekday input { width: auto; padding: 0; cursor: pointer; }
-.err { margin: 0; font-size: 0.78rem; color: #ff8080; }
-.form-actions { display: flex; gap: 0.6rem; }
-button {
-  padding: 0.6rem;
-  flex: 1;
-  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
-  border: none;
-  border-radius: 0;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
-}
-button.cancel {
-  flex: 0 0 auto;
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  box-shadow: none;
-}
-button:disabled { opacity: 0.6; cursor: not-allowed; }
-</style>

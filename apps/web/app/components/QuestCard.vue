@@ -48,7 +48,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
 </script>
 
 <template>
-  <div class="quest-wrap">
+  <div class="flex flex-col gap-2">
     <QuestForm
       v-if="editing"
       mode="edit"
@@ -57,36 +57,46 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       @cancel="editing = false"
     />
 
-    <article v-else class="quest">
-      <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
+    <article v-else class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]">
+      <span
+        class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
+        :style="{ color: rankColor, borderColor: rankColor }"
+      >
         {{ quest.difficulty }}
       </span>
 
-      <div class="body">
-        <h3>
-          <button v-if="openable" type="button" class="title-btn" @click="emit('open', quest, $event)">
+      <div class="min-w-0 flex-auto">
+        <h3 class="m-0 text-[0.95rem] text-ink-soft">
+          <button
+            v-if="openable"
+            type="button"
+            class="m-0 cursor-pointer border-0 bg-transparent p-0 text-left text-inherit [font:inherit] hover:text-white hover:underline"
+            @click="emit('open', quest, $event)"
+          >
             {{ quest.title }}
           </button>
           <template v-else>{{ quest.title }}</template>
         </h3>
         <!-- Names only — the raw id is never shown; the line is hidden until the
              parent resolves a name. -->
-        <div v-if="campaignName || parentName" class="rel-meta">
+        <div v-if="campaignName || parentName" class="mt-[0.15rem] flex flex-wrap gap-3 text-[0.7rem] text-[#6a5da0]">
           <span v-if="campaignName">Campaign: {{ campaignName }}</span>
           <span v-if="parentName">Sub-task of: {{ parentName }}</span>
         </div>
-        <p v-if="quest.description" class="desc">{{ quest.description }}</p>
-        <div class="meta">
-          <span class="xp">+{{ quest.xpReward }} XP</span>
-          <span v-if="deadlineLabel" class="deadline">⌛ {{ deadlineLabel }}</span>
+        <!-- Clamp long descriptions to 2 lines so one quest can't dominate the list;
+             the full text lives in the detail view (QuestDetail). -->
+        <p v-if="quest.description" class="mb-[0.3rem] mt-[0.2rem] line-clamp-2 text-[0.85rem] text-ink-muted">{{ quest.description }}</p>
+        <div class="flex gap-3 text-[0.75rem] text-ink-muted">
+          <span class="font-semibold text-accent-light">+{{ quest.xpReward }} XP</span>
+          <span v-if="deadlineLabel">⌛ {{ deadlineLabel }}</span>
         </div>
-        <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
+        <p v-if="errorMsg" class="mt-[0.4rem] text-[0.75rem] text-danger-bright">{{ errorMsg }}</p>
       </div>
 
-      <div class="actions">
+      <div class="flex flex-none gap-[0.4rem]">
         <button
           v-if="isActive"
-          class="edit"
+          class="cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
           @click="editing = true"
         >
@@ -95,7 +105,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest. -->
         <button
           v-if="isActive && !isSubTask"
-          class="complete"
+          class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
           @click="onComplete"
         >
@@ -103,7 +113,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         </button>
         <button
           v-if="!isSubTask"
-          class="delete"
+          class="cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
           @click="onDelete"
           aria-label="Delete quest"
@@ -113,8 +123,8 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       </div>
     </article>
 
-    <!-- Nested sub-tasks render as the same card with reduced actions. -->
-    <div v-if="quest.subTasks?.length" class="subtasks">
+    <!-- Nested sub-tasks: indented and dimmed slightly to read as children. -->
+    <div v-if="quest.subTasks?.length" class="ml-5 flex flex-col gap-2 border-l border-line pl-3">
       <QuestCard
         v-for="st in quest.subTasks"
         :key="st.id"
@@ -126,81 +136,3 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
     </div>
   </div>
 </template>
-
-<style scoped>
-.quest-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
-.quest {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  padding: 0.6rem 0.8rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-  border-radius: 0;
-}
-.rank {
-  flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 0.9rem;
-  border: 1px solid;
-  border-radius: 0;
-  background: #0a0618;
-  text-shadow: 0 0 8px currentColor;
-}
-.body { flex: 1 1 auto; min-width: 0; }
-h3 { margin: 0; font-size: 0.95rem; color: #ece8fb; }
-.title-btn {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.title-btn:hover { color: #fff; text-decoration: underline; }
-.rel-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.15rem; font-size: 0.7rem; color: #6a5da0; }
-/* Clamp long descriptions to 2 lines so one quest can't dominate the list;
-   the full text lives in the detail view (QuestDetail). */
-.desc {
-  margin: 0.2rem 0 0.3rem;
-  font-size: 0.85rem;
-  color: #8174b8;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.meta { display: flex; gap: 0.75rem; font-size: 0.75rem; color: #8174b8; }
-.xp { color: #9c7cff; font-weight: 600; }
-.err { margin: 0.4rem 0 0; font-size: 0.75rem; color: #ff8080; }
-.actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
-button {
-  padding: 0.35rem 0.65rem;
-  border-radius: 0;
-  font-weight: 600;
-  font-size: 0.78rem;
-  cursor: pointer;
-  border: 1px solid #2a2050;
-}
-.edit { background: transparent; color: #d0c8f8; border-color: #2a2050; }
-.complete { background: linear-gradient(180deg, #6a4fd8, #4a35a8); color: #fff; border: none; }
-.delete { background: transparent; color: #ff8080; border-color: #5a2740; }
-button:hover:not(:disabled) { filter: brightness(1.1); }
-button:disabled { opacity: 0.55; cursor: not-allowed; }
-
-/* Nested sub-tasks: indented and dimmed slightly to read as children. */
-.subtasks {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-left: 1.25rem;
-  padding-left: 0.75rem;
-  border-left: 1px solid #2a2050;
-}
-</style>

@@ -46,27 +46,31 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
     @cancel="editing = false"
   />
 
-  <div v-else class="qd">
+  <div v-else class="flex flex-col gap-6">
     <!-- Title row -->
-    <header class="qd-head">
-      <span class="rank" :style="{ color: rankColor, borderColor: rankColor }">
+    <header class="flex items-center gap-[0.85rem]">
+      <span
+        class="grid h-[2.4rem] w-[2.4rem] flex-none place-items-center border bg-panel text-[1.1rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
+        :style="{ color: rankColor, borderColor: rankColor }"
+      >
         {{ quest.difficulty }}
       </span>
-      <h2 class="qd-title">{{ quest.title }}</h2>
+      <h2 class="m-0 text-[1.6rem] leading-[1.2] text-ink-soft">{{ quest.title }}</h2>
     </header>
 
-    <div class="qd-grid">
+    <!-- Two panes: wide main column + fixed details rail. Stacks on narrow widths. -->
+    <div class="grid grid-cols-[minmax(0,1fr)_280px] items-start gap-7 max-[720px]:grid-cols-[1fr]">
       <!-- Main column -->
-      <main class="qd-main">
-        <section class="qd-section">
-          <h4 class="qd-label">Description</h4>
-          <p v-if="quest.description" class="qd-desc">{{ quest.description }}</p>
-          <p v-else class="qd-empty">No description.</p>
+      <main class="flex min-w-0 flex-col gap-6">
+        <section class="flex flex-col gap-[0.6rem]">
+          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Description</h4>
+          <p v-if="quest.description" class="m-0 whitespace-pre-wrap text-[0.95rem] leading-[1.6] text-ink">{{ quest.description }}</p>
+          <p v-else class="m-0 text-[0.85rem] text-line-soft">No description.</p>
         </section>
 
-        <section class="qd-section">
-          <h4 class="qd-label">Sub-quests <span class="qd-count">{{ subCount }}</span></h4>
-          <div v-if="subCount" class="qd-subs">
+        <section class="flex flex-col gap-[0.6rem]">
+          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Sub-quests <span class="ml-[0.35rem] border border-line bg-[#1a1238] px-[0.4rem] py-[0.05rem] text-[0.7rem] text-[#c9bcff]">{{ subCount }}</span></h4>
+          <div v-if="subCount" class="flex flex-col gap-2">
             <QuestCard
               v-for="st in quest.subTasks"
               :key="st.id"
@@ -76,16 +80,16 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
               @updated="emit('updated', $event)"
             />
           </div>
-          <p v-else class="qd-empty">No sub-quests.</p>
+          <p v-else class="m-0 text-[0.85rem] text-line-soft">No sub-quests.</p>
         </section>
       </main>
 
       <!-- Details sidebar -->
-      <aside class="qd-side">
-        <div class="qd-actions">
+      <aside class="flex flex-col gap-4 border border-line bg-[rgba(14,9,30,0.6)] p-4">
+        <div class="flex flex-col gap-2">
           <button
             v-if="isActive"
-            class="complete"
+            class="cursor-pointer border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
             :disabled="completing || deleting"
             @click="onComplete"
           >
@@ -93,148 +97,47 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
           </button>
           <button
             v-if="isActive"
-            class="edit"
+            class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
             :disabled="completing || deleting"
             @click="editing = true"
           >
             Edit
           </button>
-          <button class="delete" :disabled="completing || deleting" @click="onDelete">
+          <button
+            class="cursor-pointer border border-[#5a2740] bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+            :disabled="completing || deleting"
+            @click="onDelete"
+          >
             {{ deleting ? '…' : 'Delete' }}
           </button>
         </div>
-        <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
+        <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
 
-        <div class="qd-details">
-          <h4 class="qd-label">Details</h4>
-          <dl>
-            <dt>Rank</dt>
-            <dd>
-              <span class="rank-inline" :style="{ color: rankColor, borderColor: rankColor }">
+        <div>
+          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Details</h4>
+          <dl class="mt-[0.6rem] grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
+            <dt class="text-[0.78rem] text-ink-muted">Rank</dt>
+            <dd class="m-0 text-right text-[0.85rem] text-ink">
+              <span
+                class="inline-grid h-6 w-6 place-items-center border bg-panel text-[0.8rem] font-extrabold"
+                :style="{ color: rankColor, borderColor: rankColor }"
+              >
                 {{ quest.difficulty }}
               </span>
             </dd>
-            <dt>Status</dt>
-            <dd class="cap">{{ quest.status }}</dd>
-            <dt>XP reward</dt>
-            <dd class="xp">+{{ quest.xpReward }} XP</dd>
-            <dt>Deadline</dt>
-            <dd>{{ deadlineLabel ?? '—' }}</dd>
-            <dt>Campaign</dt>
-            <dd>{{ campaignName ?? '—' }}</dd>
-            <dt>Created</dt>
-            <dd>{{ createdLabel }}</dd>
+            <dt class="text-[0.78rem] text-ink-muted">Status</dt>
+            <dd class="m-0 text-right text-[0.85rem] capitalize text-ink">{{ quest.status }}</dd>
+            <dt class="text-[0.78rem] text-ink-muted">XP reward</dt>
+            <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ quest.xpReward }} XP</dd>
+            <dt class="text-[0.78rem] text-ink-muted">Deadline</dt>
+            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ deadlineLabel ?? '—' }}</dd>
+            <dt class="text-[0.78rem] text-ink-muted">Campaign</dt>
+            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ campaignName ?? '—' }}</dd>
+            <dt class="text-[0.78rem] text-ink-muted">Created</dt>
+            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ createdLabel }}</dd>
           </dl>
         </div>
       </aside>
     </div>
   </div>
 </template>
-
-<style scoped>
-.qd { display: flex; flex-direction: column; gap: 1.5rem; }
-
-.qd-head { display: flex; align-items: center; gap: 0.85rem; }
-.qd-title { margin: 0; font-size: 1.6rem; line-height: 1.2; color: #ece8fb; }
-.rank {
-  flex: 0 0 auto;
-  width: 2.4rem;
-  height: 2.4rem;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 1.1rem;
-  border: 1px solid;
-  background: #0a0618;
-  text-shadow: 0 0 8px currentColor;
-}
-
-/* Two panes: wide main column + fixed details rail. Stacks on narrow widths. */
-.qd-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 1.75rem;
-  align-items: start;
-}
-@media (max-width: 720px) {
-  .qd-grid { grid-template-columns: 1fr; }
-}
-
-.qd-main { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
-.qd-section { display: flex; flex-direction: column; gap: 0.6rem; }
-.qd-label {
-  margin: 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #8174b8;
-}
-.qd-count {
-  margin-left: 0.35rem;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.7rem;
-  color: #c9bcff;
-  background: #1a1238;
-  border: 1px solid #2a2050;
-}
-.qd-desc {
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: #d0c8f8;
-  white-space: pre-wrap;
-}
-.qd-empty { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-.qd-subs { display: flex; flex-direction: column; gap: 0.5rem; }
-
-/* Sidebar */
-.qd-side {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  background: rgba(14, 9, 30, 0.6);
-  border: 1px solid #2a2050;
-}
-.qd-actions { display: flex; flex-direction: column; gap: 0.5rem; }
-.qd-actions button {
-  padding: 0.55rem 0.7rem;
-  font: inherit;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  border: 1px solid #2a2050;
-}
-.qd-actions .complete {
-  background: linear-gradient(180deg, #6a4fd8, #4a35a8);
-  color: #fff;
-  border: none;
-  box-shadow: 0 0 14px rgba(124, 92, 232, 0.45);
-}
-.qd-actions .edit { background: transparent; color: #d0c8f8; }
-.qd-actions .delete { background: transparent; color: #ff8080; border-color: #5a2740; }
-.qd-actions button:hover:not(:disabled) { filter: brightness(1.1); }
-.qd-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
-.err { margin: 0; font-size: 0.78rem; color: #ff8080; }
-
-.qd-details dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.5rem 0.75rem;
-  margin: 0.6rem 0 0;
-}
-.qd-details dt { font-size: 0.78rem; color: #8174b8; }
-.qd-details dd { margin: 0; font-size: 0.85rem; color: #d0c8f8; text-align: right; }
-.qd-details .cap { text-transform: capitalize; }
-.qd-details .xp { color: #9c7cff; font-weight: 600; }
-.rank-inline {
-  display: inline-grid;
-  place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  font-weight: 800;
-  font-size: 0.8rem;
-  border: 1px solid;
-  background: #0a0618;
-}
-</style>

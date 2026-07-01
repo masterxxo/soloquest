@@ -131,16 +131,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <canvas ref="canvasRef" class="smoke-canvas" />
+  <canvas ref="canvasRef" class="pointer-events-none absolute inset-0 block h-full w-full">
+    <!-- Rozmiar CSS steruje też rozdzielczością bufora rysowania (offsetWidth/Height). -->
+  </canvas>
 </template>
-
-<style scoped>
-.smoke-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  display: block;
-}
-</style>

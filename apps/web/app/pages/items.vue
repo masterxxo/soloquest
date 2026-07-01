@@ -3,21 +3,8 @@
 </script>
 
 <template>
-  <div class="placeholder">
-    <h1 class="page-title">Items</h1>
-    <p class="coming-soon">— Coming soon —</p>
+  <div class="flex flex-col gap-4">
+    <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Items</h1>
+    <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
   </div>
 </template>
-
-<style scoped>
-.placeholder { display: flex; flex-direction: column; gap: 1rem; }
-.page-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #efeaff;
-}
-.coming-soon { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-</style>

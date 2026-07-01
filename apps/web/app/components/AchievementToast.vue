@@ -10,41 +10,23 @@ defineProps<{ achievements: Achievement[] | null }>();
 
 <template>
   <Transition name="achv">
-    <div v-if="achievements && achievements.length" class="achv">
-      <p class="achv-tag">[ ACHIEVEMENT ]</p>
-      <div v-for="a in achievements" :key="a.id" class="achv-item">
-        <p class="achv-title">🏆 {{ a.title }}</p>
-        <p v-if="a.description" class="achv-desc">{{ a.description }}</p>
+    <!-- top-24 (6rem) sadza toast poniżej level-up / rank-warning (top-6), by mogły się układać. -->
+    <div
+      v-if="achievements && achievements.length"
+      class="fixed left-1/2 top-24 z-[60] -translate-x-1/2 border border-[#e8c468] bg-[rgba(8,5,20,0.95)] px-8 py-4 text-center shadow-[0_0_30px_rgba(232,196,104,0.6),inset_0_0_18px_rgba(232,196,104,0.22)] backdrop-blur-[6px]"
+    >
+      <p class="mb-[0.4rem] text-[0.65rem] tracking-[0.3em] text-[#e8c468]">[ ACHIEVEMENT ]</p>
+      <div v-for="a in achievements" :key="a.id" class="my-[0.35rem]">
+        <p class="m-0 text-[1rem] font-extrabold text-[#f6e6b0] [text-shadow:0_0_12px_rgba(232,196,104,0.75)]">🏆 {{ a.title }}</p>
+        <p v-if="a.description" class="mt-[0.1rem] text-[0.78rem] text-[#c9b87f]">{{ a.description }}</p>
       </div>
     </div>
   </Transition>
 </template>
 
 <style scoped>
-.achv {
-  position: fixed;
-  /* Sits below the level-up / rank-warning toasts (top: 1.5rem) so they can stack. */
-  top: 6rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 60;
-  padding: 1rem 2rem;
-  text-align: center;
-  background: rgba(8, 5, 20, 0.95);
-  border: 1px solid #e8c468;
-  box-shadow: 0 0 30px rgba(232, 196, 104, 0.6), inset 0 0 18px rgba(232, 196, 104, 0.22);
-  backdrop-filter: blur(6px);
-}
-.achv-tag { margin: 0 0 0.4rem; letter-spacing: 0.3em; font-size: 0.65rem; color: #e8c468; }
-.achv-item { margin: 0.35rem 0; }
-.achv-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 800;
-  color: #f6e6b0;
-  text-shadow: 0 0 12px rgba(232, 196, 104, 0.75);
-}
-.achv-desc { margin: 0.1rem 0 0; font-size: 0.78rem; color: #c9b87f; }
+/* Klasy przejścia Vue (<Transition name="achv">) — Nuxt/Vue dokleja je
+   dynamicznie, więc nie da się ich wyrazić w utility; zostają jako CSS. */
 .achv-enter-active, .achv-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .achv-enter-from, .achv-leave-to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 </style>

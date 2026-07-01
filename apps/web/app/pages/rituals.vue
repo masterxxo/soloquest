@@ -49,14 +49,14 @@ function onAchievementsEarned(achievements: Achievement[]) {
 </script>
 
 <template>
-  <div class="page">
-    <header class="page-head">
-      <h1 class="page-title">Rituals</h1>
-      <button type="button" class="hdr-btn" @click="openNewForm">+ New Ritual</button>
+  <div class="flex flex-col gap-5">
+    <header class="flex items-center justify-between gap-4">
+      <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Rituals</h1>
+      <button type="button" class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] font-[inherit] text-[0.8rem] font-semibold text-ink hover:border-accent" @click="openNewForm">+ New Ritual</button>
     </header>
 
-    <div class="quest-list">
-      <p v-if="!recurringQuests.length" class="hint">
+    <div class="flex flex-col gap-[0.7rem]">
+      <p v-if="!recurringQuests.length" class="m-0 text-[0.85rem] text-line-soft">
         No rituals yet. Create one above to start a streak.
       </p>
       <RecurringQuestCard
@@ -80,29 +80,3 @@ function onAchievementsEarned(achievements: Achievement[]) {
     </HubPanel>
   </div>
 </template>
-
-<style scoped>
-.page { display: flex; flex-direction: column; gap: 1.25rem; }
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.page-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #efeaff;
-}
-.hdr-btn {
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.4rem 0.7rem;
-  cursor: pointer;
-}
-.hdr-btn:hover { border-color: #7c5ce8; }
-.quest-list { display: flex; flex-direction: column; gap: 0.7rem; }
-.hint { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-</style>
