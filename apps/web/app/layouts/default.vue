@@ -159,7 +159,7 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
             <div class="flex gap-2">
               <div class="rounded-md bg-[#1a1140] px-2.5 py-1 text-center">
                 <div class="text-sm font-medium text-[#d0c8f8]">{{ player.todayCount }}</div>
-                <div class="text-[9px] text-[#8a7fb5]">DZIŚ</div>
+                <div class="text-[9px] text-[#8a7fb5]">TODAY</div>
               </div>
               <div class="rounded-md border border-[#5a2030] bg-[#2a1320] px-2.5 py-1 text-center">
                 <div class="text-sm font-medium text-[#f0a0a0]">{{ player.overdueCount }}</div>
