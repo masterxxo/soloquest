@@ -5,8 +5,8 @@
 
 <template>
   <div class="relative flex min-h-screen items-center justify-center text-ink">
-    <!-- Główne tło (backdrop + nakładka) jest teraz globalne w app.vue (.sq-root);
-         layout auth tylko centruje panel logowania/rejestracji nad tym tłem. -->
+    <!-- The main background (backdrop + overlay) is now global in app.vue (.sq-root);
+         the auth layout only centres the login/register panel over it. -->
     <SmokeCanvas :density="1.5" :speed="1.0" />
     <slot />
   </div>

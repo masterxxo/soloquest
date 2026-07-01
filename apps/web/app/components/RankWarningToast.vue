@@ -23,8 +23,8 @@ defineProps<{ warnings: string[] }>();
 </template>
 
 <style scoped>
-/* Klasy przejścia Vue (<Transition name="rankwarn">) — Nuxt/Vue dokleja je
-   dynamicznie, więc nie da się ich wyrazić w utility; zostają jako CSS. */
+/* Vue transition classes (<Transition name="rankwarn">) — Nuxt/Vue attaches them
+   dynamically, so they can't be expressed as utilities; kept as CSS. */
 .rankwarn-enter-active, .rankwarn-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .rankwarn-enter-from, .rankwarn-leave-to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 </style>

@@ -50,7 +50,7 @@ export const usePlayerStore = defineStore('player', {
     // Cosmetic rank letter shown in the portrait badge.
     rank: (state) => rankForLevel(state.level),
 
-    // Top-level active quests whose deadline is today (kartusz "DZIŚ" counter).
+    // Top-level active quests whose deadline is today (the "today" counter).
     todayCount(): number {
       const todayKey = dateKey(new Date());
       return useQuestsStore().activeQuests.filter(

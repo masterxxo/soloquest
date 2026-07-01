@@ -18,8 +18,8 @@ defineProps<{ level: number | null }>();
 </template>
 
 <style scoped>
-/* Klasy przejścia Vue (<Transition name="levelup">) — Nuxt/Vue dokleja je
-   dynamicznie, więc nie da się ich wyrazić w utility; zostają jako CSS. */
+/* Vue transition classes (<Transition name="levelup">) — Nuxt/Vue attaches them
+   dynamically, so they can't be expressed as utilities; kept as CSS. */
 .levelup-enter-active, .levelup-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .levelup-enter-from, .levelup-leave-to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 </style>

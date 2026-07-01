@@ -77,9 +77,9 @@ const originStyle = computed(() => {
         </filter>
       </svg>
 
-        <!-- Klasa `panel` zostaje jako hak dla ::before/::after (energia obwódki),
-             selektorów przejścia `.sq-overlay-* .panel` i media query — same własności
-             wizualne przeniesione na utility. -->
+        <!-- The `panel` class stays as a hook for ::before/::after (the border energy),
+             the `.sq-overlay-* .panel` transition selectors and the media query — only the
+             visual properties moved to utilities. -->
         <div
           class="panel relative flex max-h-[88vh] w-full max-w-[var(--sq-max-width,540px)] flex-col overflow-visible border border-line bg-[rgba(8,5,20,0.97)] p-9 shadow-[0_0_40px_rgba(124,92,232,0.25)]"
           :style="originStyle"

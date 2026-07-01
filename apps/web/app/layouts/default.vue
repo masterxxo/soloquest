@@ -135,8 +135,8 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
         <span class="absolute bottom-1.5 right-1.5 h-4 w-4 border-b-2 border-r-2 border-accent" />
 
         <div class="relative m-1.5 flex h-[calc(100%-12px)] flex-col overflow-hidden rounded-[6px] border border-[#2a2050] p-5 md:p-6">
-          <!-- Dryfująca mgła w środku strony (jak w modalach); dekoracyjna warstwa
-               tła, treść nad nią dzięki `relative z-[1]`. -->
+          <!-- Drifting fog in the centre of the page (like the modals); a decorative
+               background layer, with content above it via `relative z-[1]`. -->
           <SmokeCanvas :density="1.5" :speed="0.6" />
           <header class="relative z-[1] flex items-center gap-3.5 border-b border-[#2a2050] pb-3.5">
             <div class="relative shrink-0">
@@ -183,8 +183,8 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
 </template>
 
 <style scoped>
-/* :deep sięga do <svg> renderowanego przez <GrimoireIcon> — Tailwind nie wyrazi
-   selektora dzieciej biblioteki, więc zostaje jako CSS (klasa `grimoire-tab` na
-   elemencie służy tu tylko jako hak dla tego selektora). */
+/* :deep reaches into the <svg> rendered by <GrimoireIcon> — Tailwind can't express a
+   selector into a child component, so it stays as CSS (the `grimoire-tab` class on the
+   element only serves as a hook for this selector). */
 .grimoire-tab :deep(svg) { width: 16px; height: 16px; flex-shrink: 0; }
 </style>

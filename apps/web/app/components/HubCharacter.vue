@@ -20,8 +20,8 @@
 </template>
 
 <style scoped>
-/* Maska CSS (mask-image z URL do SVG) — Tailwind nie ma utility dla mask-image,
-   więc same właściwości maski zostają jako CSS. */
+/* CSS mask (mask-image with a URL to the SVG) — Tailwind has no mask-image utility,
+   so the mask properties are kept as CSS. */
 .character-tint {
   -webkit-mask-image: url('/images/character.svg');
   mask-image: url('/images/character.svg');

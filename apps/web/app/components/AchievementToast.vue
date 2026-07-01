@@ -10,7 +10,7 @@ defineProps<{ achievements: Achievement[] | null }>();
 
 <template>
   <Transition name="achv">
-    <!-- top-24 (6rem) sadza toast poniżej level-up / rank-warning (top-6), by mogły się układać. -->
+    <!-- top-24 (6rem) sits the toast below level-up / rank-warning (top-6) so they can stack. -->
     <div
       v-if="achievements && achievements.length"
       class="fixed left-1/2 top-24 z-[60] -translate-x-1/2 border border-[#e8c468] bg-[rgba(8,5,20,0.95)] px-8 py-4 text-center shadow-[0_0_30px_rgba(232,196,104,0.6),inset_0_0_18px_rgba(232,196,104,0.22)] backdrop-blur-[6px]"
@@ -25,8 +25,8 @@ defineProps<{ achievements: Achievement[] | null }>();
 </template>
 
 <style scoped>
-/* Klasy przejścia Vue (<Transition name="achv">) — Nuxt/Vue dokleja je
-   dynamicznie, więc nie da się ich wyrazić w utility; zostają jako CSS. */
+/* Vue transition classes (<Transition name="achv">) — Nuxt/Vue attaches them
+   dynamically, so they can't be expressed as utilities; kept as CSS. */
 .achv-enter-active, .achv-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .achv-enter-from, .achv-leave-to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 </style>

@@ -27,12 +27,21 @@ onMounted(() => {
   const ctx = canvas.getContext('2d')!;
   const noise3D = createNoise3D();
 
-  function resize() {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+  // Drawing-buffer size = the element's CSS size. Returns false when the element has no
+  // dimensions yet. In production the container height (dynamic — flex, calc()) is often
+  // computed only after hydration, so a one-shot measure produced a 0x0 buffer and nothing
+  // rendered (Status worked because it has a fixed min-h).
+  let sized = false;
+  function measure() {
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+    if (!w || !h) return false;
+    canvas.width = w;
+    canvas.height = h;
+    sized = true;
+    return true;
   }
-  resize();
-  window.addEventListener('resize', resize);
+  measure();
 
   // Smoke particle parameters.
   const PARTICLE_COUNT = 120;
@@ -68,6 +77,21 @@ onMounted(() => {
   particles.forEach((p) => {
     p.life = Math.random() * p.maxLife;
   });
+
+  // Re-measure reactively instead of only on mount/`window resize`: when the container
+  // gets its real height only after mounting, the ResizeObserver ensures the canvas never
+  // gets stuck with a 0x0 buffer. On the first valid measurement, re-scatter the particles
+  // (until now they spawned against the canvas's default 300x150).
+  const ro = new ResizeObserver(() => {
+    const wasSized = sized;
+    if (measure() && !wasSized) {
+      particles.forEach((p) => {
+        Object.assign(p, spawnParticle());
+        p.life = Math.random() * p.maxLife;
+      });
+    }
+  });
+  ro.observe(canvas);
 
   function tick() {
     t += 0.003 * props.speed;
@@ -125,13 +149,13 @@ onMounted(() => {
 
   onBeforeUnmount(() => {
     cancelAnimationFrame(animFrame);
-    window.removeEventListener('resize', resize);
+    ro.disconnect();
   });
 });
 </script>
 
 <template>
   <canvas ref="canvasRef" class="pointer-events-none absolute inset-0 block h-full w-full">
-    <!-- Rozmiar CSS steruje też rozdzielczością bufora rysowania (offsetWidth/Height). -->
+    <!-- CSS size also drives the drawing-buffer resolution (offsetWidth/Height). -->
   </canvas>
 </template>

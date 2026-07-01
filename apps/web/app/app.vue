@@ -8,8 +8,8 @@
 </template>
 
 <style>
-/* Globalne style dokumentu (:root, body) — celują w elementy spoza szablonu,
-   więc nie da się ich wyrazić klasami utility na `class`; zostają jako CSS. */
+/* Global document styles (:root, body) — they target elements outside the template,
+   so they can't be expressed as utility classes on `class`; kept as CSS. */
 :root {
   color-scheme: dark;
 }
@@ -18,9 +18,9 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
   color: #d0c8f8;
 }
-/* Główne tło całej strony: przyciemniająca nakładka gradientu nałożona na obraz
-   backdrop. Zostaje jako CSS — dwuwarstwowe background-image (gradient + url) jest
-   kruche w arbitrary utility. Warstwy rozmiaru/pozycji ustawia klasa bg-* na elemencie. */
+/* Main site-wide background: a darkening gradient overlay layered over the backdrop
+   image. Kept as CSS — a two-layer background-image (gradient + url) is brittle as an
+   arbitrary utility. Size/position layers are set via bg-* classes on the element. */
 .sq-root {
   background-image: linear-gradient(rgba(4, 2, 12, 0.55), rgba(4, 2, 12, 0.55)),
     url('/images/backdrop.png');
