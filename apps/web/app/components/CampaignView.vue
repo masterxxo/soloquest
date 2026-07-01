@@ -4,7 +4,6 @@ import {
   type CampaignRow,
   type CompleteResult,
   type Quest,
-  type QuestWithWarnings,
 } from '~/lib/api-client';
 import { RANK_COLORS } from '~/composables/useQuestActions';
 import { CAMPAIGN_STATUS_LABEL, CAMPAIGN_STATUS_COLOR } from '~/composables/campaignStatus';
@@ -16,7 +15,8 @@ const emit = defineEmits<{
   saved: [campaign: CampaignRow];
   questCompleted: [result: CompleteResult];
   questDeleted: [id: string];
-  questUpdated: [result: QuestWithWarnings];
+  // Edit bubbles to the page, which owns the quest edit modal.
+  questEdit: [quest: Quest, event: MouseEvent];
   questOpen: [quest: Quest, event: MouseEvent];
 }>();
 
@@ -87,9 +87,9 @@ const questCount = computed(() => props.campaign.quests.length);
               :quest="q"
               selectable
               @open="(quest, event) => emit('questOpen', quest, event)"
+              @edit="(quest, event) => emit('questEdit', quest, event)"
               @completed="emit('questCompleted', $event)"
               @deleted="emit('questDeleted', $event)"
-              @updated="emit('questUpdated', $event)"
             />
           </div>
           <p v-else class="m-0 text-[0.85rem] text-line-soft">No quests in this campaign yet.</p>

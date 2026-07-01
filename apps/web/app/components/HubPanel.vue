@@ -1,3 +1,15 @@
+<script lang="ts">
+// Module-scoped so stacked panels (e.g. a detail modal with an edit modal on top)
+// ref-count the body scroll lock together — it's only released once the last panel closes.
+let lockCount = 0;
+function lockBodyScroll() {
+  if (import.meta.client && lockCount++ === 0) document.body.style.overflow = 'hidden';
+}
+function unlockBodyScroll() {
+  if (import.meta.client && --lockCount === 0) document.body.style.overflow = '';
+}
+</script>
+
 <script setup lang="ts">
 // Modal hub panel: dark frame with an animated energy border, decorative corners,
 // a fixed head and an internally-scrolling body (passed via the default slot).
@@ -15,10 +27,10 @@ const emit = defineEmits<{ close: [] }>();
 const shown = ref(false);
 onMounted(() => {
   shown.value = true; // false → true triggers the enter (grow) transition
-  if (import.meta.client) document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 });
 onBeforeUnmount(() => {
-  if (import.meta.client) document.body.style.overflow = '';
+  unlockBodyScroll();
 });
 function requestClose() {
   shown.value = false; // triggers the leave (shrink) transition

@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia';
 import type {
   RecurringQuest,
+  RecurringQuestWithStreak,
   RecurringCompleteResult,
   Achievement,
 } from '~/lib/api-client';
@@ -16,22 +17,42 @@ const { recurringQuests } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
 
+// Viewport point a modal grows out of — the centre of the element that opened it.
+function originFrom(event?: MouseEvent): { x: number; y: number } | null {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  return null;
+}
+
 // New-ritual form modal.
 const showNewForm = ref(false);
 const newOrigin = ref<{ x: number; y: number } | null>(null);
 function openNewForm(event?: MouseEvent) {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    newOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  } else {
-    newOrigin.value = null;
-  }
+  newOrigin.value = originFrom(event);
   showNewForm.value = true;
 }
 async function onCreated(_quest: RecurringQuest) {
   showNewForm.value = false;
   await quests.refreshRecurring();
+}
+
+// Ritual detail modal (opened by clicking the ritual name).
+const selectedRitual = ref<RecurringQuestWithStreak | null>(null);
+const detailOrigin = ref<{ x: number; y: number } | null>(null);
+function openDetail(quest: RecurringQuestWithStreak, event?: MouseEvent) {
+  detailOrigin.value = originFrom(event);
+  selectedRitual.value = quest;
+}
+
+// Edit-ritual modal (opened by the Edit button on a card or in the detail).
+const editingRitual = ref<RecurringQuest | null>(null);
+const editOrigin = ref<{ x: number; y: number } | null>(null);
+function openEditRitual(quest: RecurringQuest, event?: MouseEvent) {
+  editOrigin.value = originFrom(event);
+  editingRitual.value = quest;
 }
 
 function onCompleted(result: RecurringCompleteResult) {
@@ -42,9 +63,26 @@ function onDeleted(id: string) {
 }
 function onUpdated(quest: RecurringQuest) {
   quests.applyRecurringUpdated(quest);
+  // Keep an open detail in sync (merge over the streak fields it already holds).
+  if (selectedRitual.value?.id === quest.id)
+    selectedRitual.value = { ...selectedRitual.value, ...quest };
 }
 function onAchievementsEarned(achievements: Achievement[]) {
   feedback.showAchievements(achievements);
+}
+
+// From the detail modal: apply, then close it.
+function onDetailCompleted(result: RecurringCompleteResult) {
+  onCompleted(result);
+  selectedRitual.value = null;
+}
+function onDetailDeleted(id: string) {
+  onDeleted(id);
+  selectedRitual.value = null;
+}
+function onRitualEdited(quest: RecurringQuest) {
+  onUpdated(quest);
+  editingRitual.value = null;
 }
 </script>
 
@@ -63,13 +101,15 @@ function onAchievementsEarned(achievements: Achievement[]) {
         v-for="rq in recurringQuests"
         :key="rq.id"
         :quest="rq"
+        @open="openDetail"
+        @edit="openEditRitual"
         @completed="onCompleted"
         @deleted="onDeleted"
-        @updated="onUpdated"
         @achievements-earned="onAchievementsEarned"
       />
     </div>
 
+    <!-- New-ritual form modal. -->
     <HubPanel
       v-if="showNewForm"
       title="New Ritual"
@@ -77,6 +117,38 @@ function onAchievementsEarned(achievements: Achievement[]) {
       @close="showNewForm = false"
     >
       <RecurringQuestForm mode="create" @created="onCreated" />
+    </HubPanel>
+
+    <!-- Single-ritual detail — wide two-pane modal. -->
+    <HubPanel
+      v-if="selectedRitual"
+      title="Ritual"
+      :origin="detailOrigin"
+      :max-width="980"
+      @close="selectedRitual = null"
+    >
+      <RecurringQuestDetail
+        :quest="selectedRitual"
+        @completed="onDetailCompleted"
+        @deleted="onDetailDeleted"
+        @edit="openEditRitual"
+        @achievements-earned="onAchievementsEarned"
+      />
+    </HubPanel>
+
+    <!-- Edit-ritual modal — stacks above the detail modal when it's open. -->
+    <HubPanel
+      v-if="editingRitual"
+      title="Edit Ritual"
+      :origin="editOrigin"
+      @close="editingRitual = null"
+    >
+      <RecurringQuestForm
+        mode="edit"
+        :initial="editingRitual"
+        @updated="onRitualEdited"
+        @cancel="editingRitual = null"
+      />
     </HubPanel>
   </div>
 </template>

@@ -56,6 +56,20 @@ function openQuestDetail(quest: Quest, event?: MouseEvent) {
   selectedQuest.value = quest;
 }
 
+// ── Edit quest ────────────────────────────────────────────────────────────────
+// A dedicated modal (no inline editing). Opened from a card's or the detail's Edit
+// button; stacks on top of the detail modal when one is open.
+const editingQuest = ref<Quest | null>(null);
+const editQuestOrigin = ref<{ x: number; y: number } | null>(null);
+function openEditQuest(quest: Quest, event?: MouseEvent) {
+  editQuestOrigin.value = originFrom(event);
+  editingQuest.value = quest;
+}
+function onQuestEdited(result: QuestWithWarnings) {
+  onUpdated(result);
+  editingQuest.value = null;
+}
+
 function onCompleted(result: CompleteResult) {
   quests.applyCompleted(result);
 }
@@ -203,9 +217,9 @@ const questGroups = computed<QuestGroup[]>(() => {
             selectable
             :campaign-name="quests.campaignName(q.campaignId)"
             @open="openQuestDetail"
+            @edit="openEditQuest"
             @completed="onCompleted"
             @deleted="onDeleted"
-            @updated="onUpdated"
           />
         </div>
       </section>
@@ -235,7 +249,22 @@ const questGroups = computed<QuestGroup[]>(() => {
         :campaign-name="quests.campaignName(selectedQuest.campaignId)"
         @completed="onDetailCompleted"
         @deleted="onDetailDeleted"
-        @updated="onUpdated"
+        @edit="openEditQuest"
+      />
+    </HubPanel>
+
+    <!-- Edit-quest modal — stacks above the detail modal when it's open. -->
+    <HubPanel
+      v-if="editingQuest"
+      title="Edit Quest"
+      :origin="editQuestOrigin"
+      @close="editingQuest = null"
+    >
+      <QuestForm
+        mode="edit"
+        :initial="editingQuest"
+        @updated="onQuestEdited"
+        @cancel="editingQuest = null"
       />
     </HubPanel>
   </div>

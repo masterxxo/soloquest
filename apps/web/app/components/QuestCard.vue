@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Quest, type CompleteResult, type QuestWithWarnings } from '~/lib/api-client';
+import { type Quest, type CompleteResult } from '~/lib/api-client';
 import { useQuestActions, RANK_COLORS } from '~/composables/useQuestActions';
 
 const props = withDefaults(
@@ -18,22 +18,16 @@ const props = withDefaults(
 const emit = defineEmits<{
   completed: [result: CompleteResult];
   deleted: [id: string];
-  updated: [result: QuestWithWarnings];
+  // Edit / open the detail — both bubble to the page, which owns the modals.
   open: [quest: Quest, event: MouseEvent];
+  edit: [quest: Quest, event: MouseEvent];
 }>();
 
 // Top-level list cards open a detail view; sub-tasks don't.
 const openable = computed(() => props.selectable && !props.isSubTask);
 
-const editing = ref(false);
-
 // Only active quests can be edited/completed (mirrors the backend guard).
 const isActive = computed(() => props.quest.status === 'active');
-
-function onUpdated(result: QuestWithWarnings) {
-  editing.value = false;
-  emit('updated', result);
-}
 
 const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
 
@@ -49,15 +43,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
 
 <template>
   <div class="flex flex-col gap-2">
-    <QuestForm
-      v-if="editing"
-      mode="edit"
-      :initial="quest"
-      @updated="onUpdated"
-      @cancel="editing = false"
-    />
-
-    <article v-else class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]">
+    <article class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]">
       <span
         class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
         :style="{ color: rankColor, borderColor: rankColor }"
@@ -98,7 +84,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
           v-if="isActive"
           class="cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
           :disabled="completing || deleting"
-          @click="editing = true"
+          @click="emit('edit', quest, $event)"
         >
           Edit
         </button>
@@ -131,7 +117,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         :quest="st"
         is-sub-task
         :parent-name="quest.title"
-        @updated="emit('updated', $event)"
+        @edit="(q, e) => emit('edit', q, e)"
       />
     </div>
   </div>

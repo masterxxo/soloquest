@@ -127,6 +127,24 @@ function onDetailUpdated(result: QuestWithWarnings) {
   if (selectedQuest.value?.id === result.quest.id)
     selectedQuest.value = { ...selectedQuest.value, ...result.quest };
 }
+
+// ── Edit quest modal (opened from a campaign card or the quest detail) ────────────
+const editingQuest = ref<Quest | null>(null);
+const editQuestOrigin = ref<{ x: number; y: number } | null>(null);
+function openEditQuest(quest: Quest, event?: MouseEvent) {
+  const el = event?.currentTarget;
+  if (el instanceof HTMLElement) {
+    const r = el.getBoundingClientRect();
+    editQuestOrigin.value = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  } else {
+    editQuestOrigin.value = null;
+  }
+  editingQuest.value = quest;
+}
+function onQuestEdited(result: QuestWithWarnings) {
+  onDetailUpdated(result); // syncs store, campaign detail, and any open quest detail
+  editingQuest.value = null;
+}
 </script>
 
 <template>
@@ -183,9 +201,9 @@ function onDetailUpdated(result: QuestWithWarnings) {
       @start="startCampaign"
       @saved="onCampaignSaved"
       @quest-open="openQuestDetail"
+      @quest-edit="openEditQuest"
       @quest-completed="onCampaignQuestCompleted"
       @quest-deleted="onCampaignQuestDeleted"
-      @quest-updated="onCampaignQuestUpdated"
     />
 
     <!-- Quest detail modal. -->
@@ -201,7 +219,22 @@ function onDetailUpdated(result: QuestWithWarnings) {
         :campaign-name="quests.campaignName(selectedQuest.campaignId)"
         @completed="onDetailCompleted"
         @deleted="onDetailDeleted"
-        @updated="onDetailUpdated"
+        @edit="openEditQuest"
+      />
+    </HubPanel>
+
+    <!-- Edit-quest modal — stacks above the detail modal when it's open. -->
+    <HubPanel
+      v-if="editingQuest"
+      title="Edit Quest"
+      :origin="editQuestOrigin"
+      @close="editingQuest = null"
+    >
+      <QuestForm
+        mode="edit"
+        :initial="editingQuest"
+        @updated="onQuestEdited"
+        @cancel="editingQuest = null"
       />
     </HubPanel>
   </div>
