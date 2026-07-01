@@ -92,14 +92,25 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
         <NuxtLink
           v-for="t in tabs" :key="t.label"
           :to="t.soon ? '' : t.to"
-          class="grimoire-tab"
-          :class="[isActive(t.to) && 'is-active', t.soon && 'is-soon']"
+          class="grimoire-tab flex items-center gap-2 rounded-l-lg border border-r-0 py-[9px] pl-[14px] pr-3 text-xs transition-[color,background] duration-200"
+          :class="
+            t.soon
+              ? '-mr-px border-[#211a40] bg-[#100b22] pointer-events-none text-[#5a5080]'
+              : isActive(t.to)
+                ? '-mr-0.5 border-accent bg-accent text-white shadow-[-1px_0_0_#7c5ce8]'
+                : '-mr-px border-line bg-[#181030] text-[#9d93c9] hover:bg-[#1e1540] hover:text-[#c9bdf0]'
+          "
         >
           <GrimoireIcon :name="t.icon" />
           <span>{{ t.label }}</span>
         </NuxtLink>
 
-        <button type="button" class="grimoire-tab signout-tab" :disabled="loggingOut" @click="onSignOut">
+        <button
+          type="button"
+          class="grimoire-tab -mr-px mt-[14px] flex cursor-pointer items-center gap-2 rounded-l-lg border border-r-0 border-line bg-[#120c26] py-[9px] pl-[14px] pr-3 text-left font-[inherit] text-xs text-[#7c6fa8] transition-[color,background] duration-200 enabled:hover:bg-[#1e1230] enabled:hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="loggingOut"
+          @click="onSignOut"
+        >
           <GrimoireIcon name="items" class="invisible" />
           <span>{{ loggingOut ? 'Signing out…' : 'Sign out' }}</span>
         </button>
@@ -118,10 +129,10 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
           <rect class="c2" data-base="0.8"  pathLength="1000" fill="none" stroke="#cdbcff" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="65 935" />
         </svg>
 
-        <span class="corner left-1.5 top-1.5 border-l-2 border-t-2" />
-        <span class="corner right-1.5 top-1.5 border-r-2 border-t-2" />
-        <span class="corner bottom-1.5 left-1.5 border-b-2 border-l-2" />
-        <span class="corner bottom-1.5 right-1.5 border-b-2 border-r-2" />
+        <span class="absolute left-1.5 top-1.5 h-4 w-4 border-l-2 border-t-2 border-accent" />
+        <span class="absolute right-1.5 top-1.5 h-4 w-4 border-r-2 border-t-2 border-accent" />
+        <span class="absolute bottom-1.5 left-1.5 h-4 w-4 border-b-2 border-l-2 border-accent" />
+        <span class="absolute bottom-1.5 right-1.5 h-4 w-4 border-b-2 border-r-2 border-accent" />
 
         <div class="relative m-1.5 flex h-[calc(100%-12px)] flex-col rounded-[6px] border border-[#2a2050] p-5 md:p-6">
           <header class="flex items-center gap-3.5 border-b border-[#2a2050] pb-3.5">
@@ -169,25 +180,8 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
 </template>
 
 <style scoped>
-.grimoire-tab {
-  display: flex; align-items: center; gap: 8px;
-  padding: 9px 12px 9px 14px; font-size: 12px; color: #9d93c9;
-  background: #181030; border: 1px solid #2a2050; border-right: none;
-  border-radius: 8px 0 0 8px; margin-right: -1px;
-  transition: color .2s, background .2s;
-}
-.grimoire-tab:hover { color: #c9bdf0; background: #1e1540; }
-.grimoire-tab.is-active {
-  color: #fff; background: #7c5ce8; border-color: #7c5ce8;
-  margin-right: -2px; box-shadow: -1px 0 0 #7c5ce8;
-}
-.grimoire-tab.is-soon { color: #5a5080; background: #100b22; border-color: #211a40; pointer-events: none; }
+/* :deep sięga do <svg> renderowanego przez <GrimoireIcon> — Tailwind nie wyrazi
+   selektora dzieciej biblioteki, więc zostaje jako CSS (klasa `grimoire-tab` na
+   elemencie służy tu tylko jako hak dla tego selektora). */
 .grimoire-tab :deep(svg) { width: 16px; height: 16px; flex-shrink: 0; }
-.signout-tab {
-  margin-top: 14px; font: inherit; font-size: 12px; cursor: pointer;
-  color: #7c6fa8; background: #120c26; text-align: left;
-}
-.signout-tab:hover:not(:disabled) { color: #f0a0a0; background: #1e1230; }
-.signout-tab:disabled { opacity: .6; cursor: not-allowed; }
-.corner { position: absolute; width: 16px; height: 16px; border-color: #7c5ce8; }
 </style>

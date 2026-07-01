@@ -41,10 +41,10 @@ const originStyle = computed(() => {
 <template>
   <Teleport to="body">
     <Transition name="sq-overlay" @after-leave="emit('close')">
-      <div v-if="shown" class="overlay" @click.self="requestClose">
+      <div v-if="shown" class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(4,3,12,0.75)] p-4 backdrop-blur-[4px]" @click.self="requestClose">
       <!-- Fractal-noise displacement filter: warps the border energy into an
            irregular, writhing shape rather than a clean rectangle outline. -->
-      <svg class="sq-filter" aria-hidden="true" focusable="false">
+      <svg class="pointer-events-none absolute h-0 w-0" aria-hidden="true" focusable="false">
         <filter id="sq-energy" x="-60%" y="-60%" width="220%" height="220%">
           <!-- Low baseFrequency = large, slow undulations that bend the whole
                rectangle sides into curves (kills the boxy read); the extra
@@ -77,23 +77,33 @@ const originStyle = computed(() => {
         </filter>
       </svg>
 
-        <div class="panel" :style="originStyle">
+        <!-- Klasa `panel` zostaje jako hak dla ::before/::after (energia obwódki),
+             selektorów przejścia `.sq-overlay-* .panel` i media query — same własności
+             wizualne przeniesione na utility. -->
+        <div
+          class="panel relative flex max-h-[88vh] w-full max-w-[var(--sq-max-width,540px)] flex-col overflow-visible border border-line bg-[rgba(8,5,20,0.97)] p-9 shadow-[0_0_40px_rgba(124,92,232,0.25)]"
+          :style="originStyle"
+        >
           <SmokeCanvas :density="1.7" :speed="0.7" />
-          <span class="corner corner-tl" />
-          <span class="corner corner-tr" />
-          <span class="corner corner-bl" />
-          <span class="corner corner-br" />
+          <span class="absolute left-2 top-2 h-4 w-4 border-2 border-b-0 border-r-0 border-[#6a50c8]" />
+          <span class="absolute right-2 top-2 h-4 w-4 border-2 border-b-0 border-l-0 border-[#6a50c8]" />
+          <span class="absolute bottom-2 left-2 h-4 w-4 border-2 border-r-0 border-t-0 border-[#6a50c8]" />
+          <span class="absolute bottom-2 right-2 h-4 w-4 border-2 border-l-0 border-t-0 border-[#6a50c8]" />
 
-          <div class="panel-head">
-            <span class="panel-title">{{ title }}</span>
-            <div class="panel-actions">
+          <div class="relative z-[1] mb-7 flex flex-none items-center justify-between">
+            <span class="text-[13px] uppercase tracking-[0.22em] text-accent">{{ title }}</span>
+            <div class="flex items-center gap-[0.6rem]">
               <slot name="actions" />
-              <button class="panel-close" type="button" @click="requestClose">✕ Close</button>
+              <button
+                class="cursor-pointer border-0 bg-transparent font-[inherit] text-[0.95rem] font-semibold text-ink-muted hover:text-ink"
+                type="button"
+                @click="requestClose"
+              >✕ Close</button>
             </div>
           </div>
 
-          <div class="panel-scroll">
-            <div class="panel-body"><slot /></div>
+          <div class="relative z-[1] min-h-0 flex-auto overflow-y-auto">
+            <div class="flex flex-col gap-[1.1rem]"><slot /></div>
           </div>
         </div>
       </div>
@@ -102,33 +112,6 @@ const originStyle = computed(() => {
 </template>
 
 <style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(4, 3, 12, 0.75);
-  backdrop-filter: blur(4px);
-}
-.panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: var(--sq-max-width, 540px);
-  max-height: 88vh;
-  /* Visible so the displaced border energy can spill past the frame instead of
-     being clipped flat. The frame stays put; only .panel-scroll scrolls. */
-  overflow: visible;
-  padding: 2.25rem;
-  background: rgba(8, 5, 20, 0.97);
-  border: 1px solid #2a2050;
-  box-shadow: 0 0 40px rgba(124, 92, 232, 0.25);
-}
-
 /* Animatable angles for the two border "energy strands". @property lets us tween
    an <angle>, which plain CSS custom properties can't do. */
 @property --sq-angle {
@@ -162,13 +145,6 @@ const originStyle = computed(() => {
   pointer-events: none;
   /* Roughen the clean rectangular ring into a jagged, writhing energy shape. */
   filter: url(#sq-energy);
-}
-/* Hidden host for the SVG filter definition — renders nothing itself. */
-.sq-filter {
-  position: absolute;
-  width: 0;
-  height: 0;
-  pointer-events: none;
 }
 /* Primary strand. */
 .panel::before {
@@ -205,50 +181,6 @@ const originStyle = computed(() => {
 @keyframes sq-travel2 {
   to { --sq-angle2: 360deg; }
 }
-
-.panel-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* Above the SmokeCanvas (which sits at the panel's base layer). */
-  position: relative;
-  z-index: 1;
-}
-/* Decorative corner brackets. */
-.corner {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #6a50c8;
-}
-.corner-tl { top: 8px; left: 8px; border-right: none; border-bottom: none; }
-.corner-tr { top: 8px; right: 8px; border-left: none; border-bottom: none; }
-.corner-bl { bottom: 8px; left: 8px; border-right: none; border-top: none; }
-.corner-br { bottom: 8px; right: 8px; border-left: none; border-top: none; }
-
-.panel-head {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.75rem;
-  /* Above the SmokeCanvas (which sits at the panel's base layer). */
-  position: relative;
-  z-index: 1;
-}
-.panel-title { font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: #7c5ce8; }
-.panel-actions { display: flex; align-items: center; gap: 0.6rem; }
-.panel-close {
-  background: none;
-  border: none;
-  color: #8174b8;
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.panel-close:hover { color: #d0c8f8; }
-.panel-body { display: flex; flex-direction: column; gap: 1.1rem; }
 
 /* Open/close: the overlay backdrop fades while the panel grows from / shrinks to
    the opening icon. One transition on the overlay drives both — the panel scale via

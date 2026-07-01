@@ -33,118 +33,34 @@ async function onSubmit() {
 </script>
 
 <template>
-  <section class="sq-panel">
-    <p class="sq-tag">[ SYSTEM ]</p>
-    <h1>Awaken, Hunter</h1>
-    <p class="sq-sub">Register to begin your ascent.</p>
+  <section class="w-full max-w-[360px] rounded-[12px] border border-[#2a4dd0] bg-[rgba(10,20,45,0.75)] p-8 shadow-[0_0_24px_rgba(56,120,255,0.35),inset_0_0_18px_rgba(56,120,255,0.12)] backdrop-blur-[6px]">
+    <p class="m-0 text-[0.7rem] tracking-[0.3em] text-blue">[ SYSTEM ]</p>
+    <h1 class="m-0 mt-1 text-[1.6rem] text-[#eaf2ff] [text-shadow:0_0_12px_rgba(91,139,255,0.6)]">Awaken, Hunter</h1>
+    <p class="m-0 mb-6 mt-1 text-[0.85rem] text-[#8fa9d8]">Register to begin your ascent.</p>
 
-    <form @submit.prevent="onSubmit">
-      <label>
+    <form @submit.prevent="onSubmit" class="flex flex-col gap-[0.9rem]">
+      <label class="flex flex-col gap-[0.35rem] text-[0.8rem] text-[#9bb4e6]">
         Name
-        <input v-model="name" type="text" required autocomplete="name" />
+        <input v-model="name" type="text" required autocomplete="name" class="rounded-[6px] border border-[#29407e] bg-[#060c1c] px-3 py-[0.6rem] text-[0.95rem] text-[#eaf2ff] outline-none focus:border-blue focus:shadow-[0_0_0_2px_rgba(91,139,255,0.25)]" />
       </label>
-      <label>
+      <label class="flex flex-col gap-[0.35rem] text-[0.8rem] text-[#9bb4e6]">
         Email
-        <input v-model="email" type="email" required autocomplete="email" />
+        <input v-model="email" type="email" required autocomplete="email" class="rounded-[6px] border border-[#29407e] bg-[#060c1c] px-3 py-[0.6rem] text-[0.95rem] text-[#eaf2ff] outline-none focus:border-blue focus:shadow-[0_0_0_2px_rgba(91,139,255,0.25)]" />
       </label>
-      <label>
+      <label class="flex flex-col gap-[0.35rem] text-[0.8rem] text-[#9bb4e6]">
         Password
-        <input v-model="password" type="password" required autocomplete="new-password" />
+        <input v-model="password" type="password" required autocomplete="new-password" class="rounded-[6px] border border-[#29407e] bg-[#060c1c] px-3 py-[0.6rem] text-[0.95rem] text-[#eaf2ff] outline-none focus:border-blue focus:shadow-[0_0_0_2px_rgba(91,139,255,0.25)]" />
       </label>
 
-      <p v-if="errorMsg" class="sq-error">{{ errorMsg }}</p>
+      <p v-if="errorMsg" class="m-0 text-[0.8rem] text-danger-bright">{{ errorMsg }}</p>
 
-      <button type="submit" :disabled="loading">
+      <button type="submit" :disabled="loading" class="mt-2 cursor-pointer rounded-[6px] border-0 bg-gradient-to-b from-[#2f6bff] to-[#1d3fb8] p-[0.7rem] font-semibold text-white shadow-[0_0_16px_rgba(56,120,255,0.5)] disabled:cursor-not-allowed disabled:opacity-60">
         {{ loading ? 'Registering…' : 'Register' }}
       </button>
     </form>
 
-    <p class="sq-alt">
-      Already a Hunter? <NuxtLink to="/login">Sign in</NuxtLink>
+    <p class="m-0 mt-5 text-center text-[0.8rem] text-[#8fa9d8]">
+      Already a Hunter? <NuxtLink to="/login" class="text-blue">Sign in</NuxtLink>
     </p>
   </section>
 </template>
-
-<style scoped>
-.sq-panel {
-  width: 100%;
-  max-width: 360px;
-  padding: 2rem;
-  background: rgba(10, 20, 45, 0.75);
-  border: 1px solid #2a4dd0;
-  border-radius: 12px;
-  box-shadow: 0 0 24px rgba(56, 120, 255, 0.35), inset 0 0 18px rgba(56, 120, 255, 0.12);
-  backdrop-filter: blur(6px);
-}
-.sq-tag {
-  margin: 0;
-  letter-spacing: 0.3em;
-  font-size: 0.7rem;
-  color: #5b8bff;
-}
-h1 {
-  margin: 0.25rem 0 0;
-  font-size: 1.6rem;
-  color: #eaf2ff;
-  text-shadow: 0 0 12px rgba(91, 139, 255, 0.6);
-}
-.sq-sub {
-  margin: 0.25rem 0 1.5rem;
-  font-size: 0.85rem;
-  color: #8fa9d8;
-}
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.8rem;
-  color: #9bb4e6;
-}
-input {
-  padding: 0.6rem 0.75rem;
-  background: #060c1c;
-  border: 1px solid #29407e;
-  border-radius: 6px;
-  color: #eaf2ff;
-  font-size: 0.95rem;
-  outline: none;
-}
-input:focus {
-  border-color: #5b8bff;
-  box-shadow: 0 0 0 2px rgba(91, 139, 255, 0.25);
-}
-button {
-  margin-top: 0.5rem;
-  padding: 0.7rem;
-  background: linear-gradient(180deg, #2f6bff, #1d3fb8);
-  border: none;
-  border-radius: 6px;
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 0 16px rgba(56, 120, 255, 0.5);
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.sq-error {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #ff8080;
-}
-.sq-alt {
-  margin: 1.25rem 0 0;
-  font-size: 0.8rem;
-  color: #8fa9d8;
-  text-align: center;
-}
-.sq-alt a {
-  color: #5b8bff;
-}
-</style>

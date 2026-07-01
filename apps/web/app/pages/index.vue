@@ -161,30 +161,41 @@ const questGroups = computed<QuestGroup[]>(() => {
 </script>
 
 <template>
-  <div class="page">
-    <header class="page-head">
-      <h1 class="page-title">Quests</h1>
-      <form class="quick-add" @submit.prevent="quickAdd">
+  <div class="flex flex-col gap-5">
+    <header class="flex flex-wrap items-center justify-between gap-4">
+      <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Quests</h1>
+      <form class="flex items-center gap-2" @submit.prevent="quickAdd">
         <input
           v-model="quickTitle"
           type="text"
-          class="quick-input"
+          class="min-w-[200px] border border-line bg-[rgba(14,9,30,0.7)] px-[0.7rem] py-[0.4rem] text-[0.85rem] text-ink-soft font-[inherit] focus:border-accent focus:outline-none"
           placeholder="Quick add a quest…"
           maxlength="255"
         />
-        <button type="submit" class="quick-btn" :disabled="quickAdding || !quickTitle.trim()">
+        <button
+          type="submit"
+          class="cursor-pointer border border-accent bg-accent/12 px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] enabled:hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="quickAdding || !quickTitle.trim()"
+        >
           Add
         </button>
-        <button type="button" class="hdr-btn" @click="openNewQuestForm">+ New Quest</button>
+        <button
+          type="button"
+          class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
+          @click="openNewQuestForm"
+        >+ New Quest</button>
       </form>
     </header>
 
-    <div class="quest-groups">
-      <section v-for="group in questGroups" :key="group.key" class="quest-group">
-        <div class="group-header" :class="{ 'group-header--overdue': group.isOverdue }">
+    <div class="flex flex-col gap-5">
+      <section v-for="group in questGroups" :key="group.key" class="flex flex-col gap-2">
+        <div
+          class="border-b pb-[0.4rem] text-[0.7rem] uppercase tracking-[0.18em]"
+          :class="group.isOverdue ? 'border-[rgba(192,84,58,0.3)] text-[#c0543a]' : 'border-line-soft/30 text-line-soft'"
+        >
           {{ group.label }}
         </div>
-        <div class="group-quests">
+        <div class="flex flex-col gap-2">
           <QuestCard
             v-for="q in group.quests"
             :key="q.id"
@@ -198,7 +209,7 @@ const questGroups = computed<QuestGroup[]>(() => {
           />
         </div>
       </section>
-      <p v-if="!questGroups.length" class="hint">No active quests. Add your first above.</p>
+      <p v-if="!questGroups.length" class="m-0 text-[0.85rem] text-line-soft">No active quests. Add your first above.</p>
     </div>
 
     <!-- New-quest form modal. -->
@@ -229,62 +240,3 @@ const questGroups = computed<QuestGroup[]>(() => {
     </HubPanel>
   </div>
 </template>
-
-<style scoped>
-.page { display: flex; flex-direction: column; gap: 1.25rem; }
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-.page-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #efeaff;
-}
-.quick-add { display: flex; align-items: center; gap: 0.5rem; }
-.quick-input {
-  background: rgba(14, 9, 30, 0.7);
-  border: 1px solid #2a2050;
-  color: #ece8fb;
-  font: inherit;
-  font-size: 0.85rem;
-  padding: 0.4rem 0.7rem;
-  min-width: 200px;
-}
-.quick-input:focus { outline: none; border-color: #7c5ce8; }
-.quick-btn,
-.hdr-btn {
-  background: transparent;
-  border: 1px solid #2a2050;
-  color: #d0c8f8;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.4rem 0.7rem;
-  cursor: pointer;
-}
-.quick-btn { border-color: #7c5ce8; background: rgba(124, 92, 232, 0.12); }
-.quick-btn:hover:not(:disabled),
-.hdr-btn:hover { border-color: #7c5ce8; }
-.quick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.quest-groups { display: flex; flex-direction: column; gap: 1.25rem; }
-.quest-group { display: flex; flex-direction: column; gap: 0.5rem; }
-.group-header {
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #4a3d7a;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid rgba(74, 61, 122, 0.3);
-}
-.group-header--overdue { color: #c0543a; border-bottom-color: rgba(192, 84, 58, 0.3); }
-.group-quests { display: flex; flex-direction: column; gap: 0.5rem; }
-.hint { margin: 0; font-size: 0.85rem; color: #4a3d7a; }
-</style>

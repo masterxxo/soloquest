@@ -6,35 +6,25 @@ defineProps<{ warnings: string[] }>();
 
 <template>
   <Transition name="rankwarn">
-    <div v-if="warnings.length" class="rankwarn">
-      <p class="rankwarn-tag">[ SYSTEM ]</p>
-      <p v-for="(w, i) in warnings" :key="i" class="rankwarn-line">⚠ {{ w }}</p>
+    <div
+      v-if="warnings.length"
+      class="fixed left-1/2 top-6 z-[60] -translate-x-1/2 border border-gold bg-[rgba(8,5,20,0.95)] px-8 py-4 text-center shadow-[0_0_30px_rgba(240,180,41,0.55),inset_0_0_18px_rgba(240,180,41,0.2)] backdrop-blur-[6px]"
+    >
+      <p class="mb-[0.35rem] text-[0.65rem] tracking-[0.3em] text-gold">[ SYSTEM ]</p>
+      <p
+        v-for="(w, i) in warnings"
+        :key="i"
+        class="my-[0.15rem] text-[0.85rem] font-semibold text-[#f7d774] [text-shadow:0_0_10px_rgba(240,180,41,0.6)]"
+      >
+        ⚠ {{ w }}
+      </p>
     </div>
   </Transition>
 </template>
 
 <style scoped>
-.rankwarn {
-  position: fixed;
-  top: 1.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 60;
-  padding: 1rem 2rem;
-  text-align: center;
-  background: rgba(8, 5, 20, 0.95);
-  border: 1px solid #f0b429;
-  box-shadow: 0 0 30px rgba(240, 180, 41, 0.55), inset 0 0 18px rgba(240, 180, 41, 0.2);
-  backdrop-filter: blur(6px);
-}
-.rankwarn-tag { margin: 0 0 0.35rem; letter-spacing: 0.3em; font-size: 0.65rem; color: #f0b429; }
-.rankwarn-line {
-  margin: 0.15rem 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #f7d774;
-  text-shadow: 0 0 10px rgba(240, 180, 41, 0.6);
-}
+/* Klasy przejścia Vue (<Transition name="rankwarn">) — Nuxt/Vue dokleja je
+   dynamicznie, więc nie da się ich wyrazić w utility; zostają jako CSS. */
 .rankwarn-enter-active, .rankwarn-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .rankwarn-enter-from, .rankwarn-leave-to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 </style>
