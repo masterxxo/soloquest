@@ -14,10 +14,13 @@ const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId =
 
 <template>
   <div class="status">
-    <!-- Character stage: the full hunter figure with its drifting haze. -->
+    <!-- Character stage: the full hunter figure with its drifting haze. The figure is
+         sized to the stage (object-contain, bottom-anchored) so the whole hunter —
+         face included — stays visible; HubCharacter's viewport-anchored positioning is
+         meant for the full-screen dashboard, not this framed panel. -->
     <div class="stage">
       <SmokeCanvas :density="1.2" :speed="0.8" />
-      <HubCharacter />
+      <img class="character" src="/images/character.svg" alt="Hunter character" />
     </div>
 
     <!-- Stat sheet -->
@@ -66,6 +69,20 @@ const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId =
   border: 1px solid #2a2050;
   border-radius: 8px;
   background: radial-gradient(120% 90% at 50% 10%, rgba(124, 92, 232, 0.12), transparent 60%), #0a0618;
+}
+/* Whole figure, bottom-anchored and contained within the stage (never clipped). */
+.character {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  pointer-events: none;
+  user-select: none;
+  filter: brightness(0.95) saturate(1.05) drop-shadow(0 0 40px rgba(124, 92, 232, 0.5));
 }
 
 .sheet { display: flex; flex-direction: column; gap: 1.5rem; }
