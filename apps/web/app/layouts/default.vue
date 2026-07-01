@@ -85,7 +85,7 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full justify-center bg-[#070411] p-4 text-[#d0c8f8] md:p-8">
+  <div class="flex min-h-screen w-full justify-center p-4 text-[#d0c8f8] md:p-8">
     <div class="flex w-full max-w-6xl items-stretch">
 
       <nav class="z-10 flex flex-col gap-1.5 pt-8">
