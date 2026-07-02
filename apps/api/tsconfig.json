@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Hono on @hono/node-server — needs Node globals (process, serve, etc.).
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

@@ -45,7 +45,8 @@ export function toDateString(date: Date): string {
 /** Parse a 'YYYY-MM-DD' string into a Date at UTC midnight (pairs with toDateString). */
 export function fromDateString(value: string): Date {
   const [y, m, d] = value.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
+  // value is a validated 'YYYY-MM-DD' string, so all three parts are present.
+  return new Date(Date.UTC(y!, m! - 1, d!));
 }
 
 /** Truncate any timestamp to UTC midnight of its calendar day. */

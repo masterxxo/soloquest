@@ -96,11 +96,13 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
             input.recurrenceType === 'daily' ? null : input.recurrenceValue ?? null,
         })
         .returning();
+      if (!quest) throw new Error('Failed to create recurring quest');
 
       const [streak] = await tx
         .insert(recurringQuestStreaks)
         .values({ recurringQuestId: quest.id, userId })
         .returning();
+      if (!streak) throw new Error('Failed to create streak');
 
       return { quest, streak };
     });
@@ -137,6 +139,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
         .set(input)
         .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)))
         .returning();
+      if (!updated) throw new Error('Failed to update recurring quest');
 
       return c.json(updated);
     },
@@ -202,6 +205,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
           .insert(recurringQuestCompletions)
           .values({ recurringQuestId: id, userId, completedDate })
           .returning();
+        if (!completion) throw new Error('Failed to record completion');
 
         // Read the current streak (created at POST; recreated defensively if missing).
         let [streak] = await tx
@@ -214,6 +218,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
             .values({ recurringQuestId: id, userId })
             .returning();
         }
+        if (!streak) throw new Error('Failed to load or create streak');
 
         // The streak continues only if the previous completion landed exactly on the
         // prior required day; otherwise it restarts at 1.
@@ -238,12 +243,14 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
           .set({ currentStreak, longestStreak, totalCompletions, lastCompletedDate })
           .where(eq(recurringQuestStreaks.recurringQuestId, id))
           .returning();
+        if (!updatedStreak) throw new Error('Failed to update streak');
 
         // Server-authoritative XP: flat +10, recompute level from the new total.
         const [currentUser] = await tx
           .select()
           .from(userTable)
           .where(eq(userTable.id, userId));
+        if (!currentUser) throw new Error('Authenticated user not found');
         const prevLevel = currentUser.level ?? 1;
         const newXp = (currentUser.xp ?? 0) + RECURRING_XP_REWARD;
         const { level: newLevel } = levelFromTotalXp(newXp);

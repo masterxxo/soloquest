@@ -47,7 +47,8 @@ interface Week {
 /** Parses 'YYYY-MM-DD' into a Date at UTC midnight — consistent with the backend's dates. */
 function parseUtc(value: string): Date {
   const [y, m, d] = value.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
+  // value is always a 'YYYY-MM-DD' string from the backend, so all parts are present.
+  return new Date(Date.UTC(y!, m! - 1, d!));
 }
 /** Formats a Date back to 'YYYY-MM-DD' using its UTC components. */
 function formatUtc(date: Date): string {

@@ -79,6 +79,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         parentId: input.parentId,
       })
       .returning();
+    if (!created) throw new Error('Failed to create quest');
 
     const warnings = await buildRankWarnings(
       userId,
@@ -123,6 +124,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         })
         .where(and(eq(quests.id, id), eq(quests.userId, userId)))
         .returning();
+      if (!updated) throw new Error('Failed to update quest');
 
       // Warn against the effective difficulty and any parent set in this request.
       const warnings = await buildRankWarnings(
@@ -166,6 +168,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .select()
         .from(userTable)
         .where(eq(userTable.id, sessionUser.id));
+      if (!currentUser) throw new Error('Authenticated user not found');
 
       const prevLevel = currentUser.level ?? 1;
       const newXp = (currentUser.xp ?? 0) + quest.xpReward;
@@ -176,6 +179,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .set({ status: 'completed', completedAt: new Date() })
         .where(eq(quests.id, id))
         .returning();
+      if (!updatedQuest) throw new Error('Failed to complete quest');
 
       await tx
         .update(userTable)

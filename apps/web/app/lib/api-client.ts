@@ -9,9 +9,10 @@ import type { AppType } from '@soloquest/api';
 export const client = hc<AppType>(import.meta.client ? window.location.origin : '');
 
 // Types inferred straight from the API routes (dates arrive JSON-serialized as strings).
-// subTasks is attached only when a request passes include=subTasks, so it's an optional,
-// self-referential field layered on top of the inferred row shape.
-export type Quest = InferResponseType<typeof client.api.quests.$get>[number] & {
+// The list GET validates its query, so its response type is a 200|400 union — pin 200 to
+// get the array. subTasks is attached only when a request passes include=subTasks, so it's
+// an optional, self-referential field layered on top of the inferred row shape.
+export type Quest = InferResponseType<typeof client.api.quests.$get, 200>[number] & {
   subTasks?: Quest[];
 };
 

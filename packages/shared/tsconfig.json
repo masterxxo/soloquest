@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Pure zod + leveling math — no Node globals, keep the ambient types minimal.
+    "types": []
+  },
+  "include": ["src"]
+}

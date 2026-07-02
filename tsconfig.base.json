@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    // Workspace packages export raw .ts (exports → ./src/index.ts), so resolve like the
+    // bundler/tsx runtime does rather than emitting .d.ts we don't ship.
+    "moduleResolution": "Bundler",
+    "strict": true,
+    // Match the strictness Nuxt enforces on the web app so api/db/shared catch the same
+    // possibly-undefined access their consumers would (indexing, array destructuring).
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}
