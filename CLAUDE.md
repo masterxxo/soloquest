@@ -132,6 +132,9 @@ pnpm dlx @better-auth/cli@latest generate --config ./src/auth.ts --output ../../
 
 ## Conventions
 - TypeScript everywhere, ESM, strict mode.
+- **English only for everything committed to the repo** — code comments, identifiers,
+  commit messages, UI copy, docs. No exceptions, regardless of the language a request
+  is written in.
 - Single root `.env`, loaded via `--env-file` (api dev/start) and a `dotenv` path in
   `drizzle.config.ts`.
 - All routes under the `/api` basePath.

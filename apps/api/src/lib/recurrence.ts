@@ -127,3 +127,53 @@ export function previousRequiredDate(
       return null;
   }
 }
+
+/** Status of a single day in a ritual's completion calendar (heatmap). */
+export type RitualCalendarStatus = 'done' | 'missed' | 'not_scheduled';
+
+/** One calendar day: a 'YYYY-MM-DD' date plus its completion status. */
+export interface RitualCalendarDay {
+  date: string;
+  status: RitualCalendarStatus;
+}
+
+/**
+ * Start of the heatmap window: max(ritual start day, today − weeks·7 + 1).
+ * Both dates are UTC midnight of the user's local day (see getUserDate).
+ */
+export function calendarWindowStart(today: Date, questStart: Date, weeks: number): Date {
+  const earliest = new Date(today.getTime() - (weeks * 7 - 1) * MS_PER_DAY);
+  return questStart.getTime() > earliest.getTime() ? questStart : earliest;
+}
+
+/**
+ * Builds the day-by-day status calendar, from windowStart to today inclusive (no
+ * future days). All dates are UTC midnight of the user's local day, so adding
+ * MS_PER_DAY never trips over DST. The status rule is the single source of truth
+ * shared with the cron via wasRequiredOn:
+ *   done          → the date is in completedDates.
+ *   missed        → a required day (wasRequiredOn) that is *closed* (before today) and uncompleted.
+ *   not_scheduled → a non-required day, OR today (still in progress) with no completion.
+ *
+ * "missed" never applies to today — the day is still running, so a not-yet-completed
+ * ritual stays neutral until the day closes. This matches the cron, which only judges
+ * yesterday (a fully closed day), never today.
+ */
+export function buildRitualCalendar(
+  quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
+  windowStart: Date,
+  today: Date,
+  completedDates: Set<string>,
+): RitualCalendarDay[] {
+  const days: RitualCalendarDay[] = [];
+  for (let t = windowStart.getTime(); t <= today.getTime(); t += MS_PER_DAY) {
+    const date = new Date(t);
+    const ds = toDateString(date);
+    let status: RitualCalendarStatus;
+    if (completedDates.has(ds)) status = 'done';
+    else if (date.getTime() < today.getTime() && wasRequiredOn(quest, date)) status = 'missed';
+    else status = 'not_scheduled';
+    days.push({ date: ds, status });
+  }
+  return days;
+}

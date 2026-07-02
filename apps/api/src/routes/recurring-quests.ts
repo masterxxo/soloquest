@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import {
   db,
   recurringQuests,
@@ -23,12 +23,18 @@ import {
   fromDateString,
   wasRequiredOn,
   previousRequiredDate,
+  calendarWindowStart,
+  buildRitualCalendar,
 } from '../lib/recurrence';
 import { checkAndAwardAchievements } from '../lib/streak';
 
 // Completing a recurring quest always grants a flat reward, independent of difficulty —
 // the value of a habit is in the repetition, not the one-off rank.
 const RECURRING_XP_REWARD = 10;
+
+// How many weeks back the /stats heatmap shows. Pulled out as a constant so the window
+// can later be bumped to a full year (e.g. 52) in one place.
+const CALENDAR_WEEKS = 18;
 
 // The user's timezone decides "what day is it for them". Falls back to UTC when no
 // settings row exists yet.
@@ -270,13 +276,20 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
     },
   )
 
-  // Streak summary plus the last 30 completion dates, scoped to the owner.
+  // Streak summary, the last 30 completion dates, and a GitHub-style completion
+  // calendar (heatmap) — all scoped to the owner.
   .get('/:id/stats', zValidator('param', recurringQuestIdParamSchema), async (c) => {
     const userId = c.get('user')!.id;
     const { id } = c.req.valid('param');
 
+    // Pull the recurrence config too — it feeds the calendar's "due day" logic.
     const [quest] = await db
-      .select({ id: recurringQuests.id })
+      .select({
+        id: recurringQuests.id,
+        recurrenceType: recurringQuests.recurrenceType,
+        recurrenceValue: recurringQuests.recurrenceValue,
+        createdAt: recurringQuests.createdAt,
+      })
       .from(recurringQuests)
       .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
     if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
@@ -293,8 +306,32 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       .orderBy(desc(recurringQuestCompletions.completedDate))
       .limit(30);
 
+    // Completion calendar (heatmap): day-by-day status in the user's timezone, from the
+    // ritual's start (or the last CALENDAR_WEEKS weeks) up to today. "Required day" is
+    // computed by the same function (wasRequiredOn) as the cron — a single source of truth.
+    const timezone = await getUserTimezone(userId);
+    const today = getUserDate(new Date(), timezone);
+    const questStart = getUserDate(quest.createdAt, timezone);
+    const windowStart = calendarWindowStart(today, questStart, CALENDAR_WEEKS);
+
+    // Only completions within the window — completedDate is a `date` column, so a
+    // lexicographic 'YYYY-MM-DD' comparison is equivalent to comparing the dates.
+    const windowCompletions = await db
+      .select({ completedDate: recurringQuestCompletions.completedDate })
+      .from(recurringQuestCompletions)
+      .where(
+        and(
+          eq(recurringQuestCompletions.recurringQuestId, id),
+          gte(recurringQuestCompletions.completedDate, toDateString(windowStart)),
+        ),
+      );
+    const completedDates = new Set(windowCompletions.map((row) => row.completedDate));
+
+    const calendar = buildRitualCalendar(quest, windowStart, today, completedDates);
+
     return c.json({
       streak: streak ?? null,
       completions: completions.map((row) => row.completedDate),
+      calendar,
     });
   });

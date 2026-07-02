@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  client,
   type RecurringQuest,
   type RecurringQuestWithStreak,
   type RecurringCompleteResult,
@@ -43,6 +44,24 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQue
     achievementsEarned: (a) => emit('achievementsEarned', a),
   },
 );
+
+// Completion calendar (heatmap) fetched client-side per the RPC/architecture rules —
+// stats are per-user and the session cookie rides along same-origin. Keyed by quest id;
+// the modal remounts on each open, so a plain per-id key is enough. A failed fetch does
+// not break the panel (the template falls back to a discreet placeholder).
+const { data: stats, error: calendarError } = useAsyncData(
+  `ritual-stats-${props.quest.id}`,
+  async () => {
+    const res = await client.api['recurring-quests'][':id'].stats.$get({
+      param: { id: props.quest.id },
+    });
+    if (!res.ok) throw new Error('Failed to load ritual stats');
+    return res.json();
+  },
+  { server: false },
+);
+
+const calendar = computed(() => stats.value?.calendar ?? []);
 </script>
 
 <template>
@@ -87,6 +106,15 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQue
               <span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Total</span>
             </div>
           </div>
+        </section>
+
+        <section class="flex flex-col gap-[0.6rem]">
+          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Calendar</h4>
+          <RecurringQuestHeatmap v-if="calendar.length" :calendar="calendar" />
+          <p v-else-if="calendarError" class="m-0 text-[0.85rem] text-line-soft">
+            Calendar unavailable.
+          </p>
+          <p v-else class="m-0 text-[0.85rem] text-line-soft">Loading calendar…</p>
         </section>
       </main>
 

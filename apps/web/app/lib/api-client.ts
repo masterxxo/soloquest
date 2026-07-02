@@ -62,5 +62,16 @@ export type RecurringCompleteResult = InferResponseType<
 // step with what the backend awards (id, type, threshold, xpBonus, title, description).
 export type Achievement = RecurringCompleteResult['newAchievements'][number];
 
+// GET /api/recurring-quests/:id/stats → streak summary, recent completion dates, and
+// the completion calendar (heatmap). Inferred 1:1 from the route so the calendar's
+// day/status shape stays in step with the backend.
+export type RecurringQuestStats = InferResponseType<
+  (typeof client.api['recurring-quests'])[':id']['stats']['$get'],
+  200
+>;
+
+// One calendar cell: { date: 'YYYY-MM-DD', status: 'done' | 'missed' | 'not_scheduled' }.
+export type RitualCalendarDay = RecurringQuestStats['calendar'][number];
+
 // GET /api/user/settings → the user's settings row (currently just timezone + stamps).
 export type UserSettings = InferResponseType<typeof client.api.user.settings.$get, 200>;
