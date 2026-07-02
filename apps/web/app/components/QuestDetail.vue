@@ -2,14 +2,9 @@
 import { type Quest, type CompleteResult } from '~/lib/api-client';
 import { useQuestActions, RANK_COLORS } from '~/composables/useQuestActions';
 
-const props = withDefaults(
-  defineProps<{
-    quest: Quest;
-    // Resolved by the parent from the campaign list — we never render the raw id.
-    campaignName?: string | null;
-  }>(),
-  { campaignName: null },
-);
+const props = defineProps<{
+  quest: Quest;
+}>();
 const emit = defineEmits<{
   completed: [result: CompleteResult];
   deleted: [id: string];
@@ -118,8 +113,6 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
             <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ quest.xpReward }} XP</dd>
             <dt class="text-[0.78rem] text-ink-muted">Deadline</dt>
             <dd class="m-0 text-right text-[0.85rem] text-ink">{{ deadlineLabel ?? '—' }}</dd>
-            <dt class="text-[0.78rem] text-ink-muted">Campaign</dt>
-            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ campaignName ?? '—' }}</dd>
             <dt class="text-[0.78rem] text-ink-muted">Created</dt>
             <dd class="m-0 text-right text-[0.85rem] text-ink">{{ createdLabel }}</dd>
           </dl>

@@ -215,7 +215,6 @@ const questGroups = computed<QuestGroup[]>(() => {
             :key="q.id"
             :quest="q"
             selectable
-            :campaign-name="quests.campaignName(q.campaignId)"
             @open="openQuestDetail"
             @edit="openEditQuest"
             @completed="onCompleted"
@@ -246,7 +245,6 @@ const questGroups = computed<QuestGroup[]>(() => {
     >
       <QuestDetail
         :quest="selectedQuest"
-        :campaign-name="quests.campaignName(selectedQuest.campaignId)"
         @completed="onDetailCompleted"
         @deleted="onDetailDeleted"
         @edit="openEditQuest"

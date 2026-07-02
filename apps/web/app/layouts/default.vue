@@ -20,7 +20,6 @@ onMounted(() => { quests.load(); });
 
 const tabs = [
   { to: '/',          label: 'Quests',    icon: 'quests' },
-  { to: '/campaigns', label: 'Campaigns', icon: 'campaigns' },
   { to: '/rituals',   label: 'Rituals',   icon: 'rituals' },
   { to: '/status',    label: 'Status',    icon: 'status' },
   { to: '/glossary',  label: 'Glossary',  icon: 'glossary', soon: true },

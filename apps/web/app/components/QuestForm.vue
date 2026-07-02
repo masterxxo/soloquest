@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { client, type Quest, type Campaign, type QuestWithWarnings } from '~/lib/api-client';
+import { client, type Quest, type QuestWithWarnings } from '~/lib/api-client';
 import { XP_REWARDS } from '@soloquest/shared';
 
 const props = withDefaults(
@@ -19,15 +19,13 @@ const title = ref('');
 const description = ref('');
 const difficulty = ref<Difficulty>('E');
 const deadline = ref(''); // yyyy-mm-dd from <input type="date">
-const campaignId = ref(''); // '' = None (sent as null)
 const parentId = ref(''); // '' = None (sent as null)
 const submitting = ref(false);
 const errorMsg = ref<string | null>(null);
 // Rank warnings from the last server response (non-blocking; shown under difficulty).
 const localWarnings = ref<string[]>([]);
 
-// Options for the two relation selects, fetched client-side on mount.
-const campaigns = ref<Campaign[]>([]);
+// Options for the parent-quest select, fetched client-side on mount.
 const activeQuests = ref<Quest[]>([]);
 // In edit mode a quest can't be its own parent.
 const parentChoices = computed(() =>
@@ -42,11 +40,7 @@ function toDateInput(iso: string) {
 }
 
 onMounted(async () => {
-  const [cRes, qRes] = await Promise.all([
-    client.api.campaigns.$get(),
-    client.api.quests.$get({ query: { status: 'active' } }),
-  ]);
-  if (cRes.ok) campaigns.value = await cRes.json();
+  const qRes = await client.api.quests.$get({ query: { status: 'active' } });
   if (qRes.ok) activeQuests.value = await qRes.json();
 });
 
@@ -58,7 +52,6 @@ watch(
     description.value = q?.description ?? '';
     difficulty.value = q?.difficulty ?? 'E';
     deadline.value = q?.deadline ? toDateInput(q.deadline) : '';
-    campaignId.value = q?.campaignId ?? '';
     parentId.value = q?.parentId ?? '';
   },
   { immediate: true },
@@ -73,7 +66,6 @@ async function onCreate() {
       // Date or null (empty = no deadline). hc serialises the Date to ISO; null stays
       // null. Never send "" — z.coerce.date() would choke on it.
       deadline: deadline.value ? new Date(deadline.value) : null,
-      campaignId: campaignId.value || null,
       parentId: parentId.value || null,
     },
   });
@@ -88,7 +80,6 @@ async function onCreate() {
   description.value = '';
   difficulty.value = 'E';
   deadline.value = '';
-  campaignId.value = '';
   parentId.value = '';
 }
 
@@ -100,7 +91,6 @@ async function onEdit() {
     description?: string;
     difficulty?: Difficulty;
     deadline?: Date | null;
-    campaignId?: string | null;
     parentId?: string | null;
   } = {};
   if (title.value !== initial.title) changes.title = title.value;
@@ -109,7 +99,6 @@ async function onEdit() {
   const initialDeadline = initial.deadline ? toDateInput(initial.deadline) : '';
   // Empty now → null (clear it); set/changed → Date; unchanged → omit.
   if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
-  if (campaignId.value !== (initial.campaignId ?? '')) changes.campaignId = campaignId.value || null;
   if (parentId.value !== (initial.parentId ?? '')) changes.parentId = parentId.value || null;
 
   if (Object.keys(changes).length === 0) {
@@ -182,28 +171,16 @@ async function onSubmit() {
 
     <p v-for="(w, i) in localWarnings" :key="i" class="m-0 text-[0.78rem] text-gold">⚠ {{ w }}</p>
 
-    <div class="flex gap-[0.7rem]">
-      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-        Campaign
-        <select
-          v-model="campaignId"
-          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-        >
-          <option value="">None</option>
-          <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.title }}</option>
-        </select>
-      </label>
-      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-        Parent quest
-        <select
-          v-model="parentId"
-          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-        >
-          <option value="">None</option>
-          <option v-for="q in parentChoices" :key="q.id" :value="q.id">{{ q.title }}</option>
-        </select>
-      </label>
-    </div>
+    <label class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
+      Parent quest
+      <select
+        v-model="parentId"
+        class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+      >
+        <option value="">None</option>
+        <option v-for="q in parentChoices" :key="q.id" :value="q.id">{{ q.title }}</option>
+      </select>
+    </label>
 
     <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
 

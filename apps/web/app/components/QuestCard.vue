@@ -6,14 +6,12 @@ const props = withDefaults(
   defineProps<{
     quest: Quest;
     isSubTask?: boolean;
-    // Resolved by the parent from the campaign list — we never render the raw id.
-    campaignName?: string | null;
     // For a sub-task, the title of the quest it belongs to.
     parentName?: string | null;
     // Title becomes a button that emits `open` (used by the list to open detail).
     selectable?: boolean;
   }>(),
-  { isSubTask: false, campaignName: null, parentName: null, selectable: false },
+  { isSubTask: false, parentName: null, selectable: false },
 );
 const emit = defineEmits<{
   completed: [result: CompleteResult];
@@ -63,11 +61,10 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
           </button>
           <template v-else>{{ quest.title }}</template>
         </h3>
-        <!-- Names only — the raw id is never shown; the line is hidden until the
+        <!-- Name only — the raw id is never shown; the line is hidden until the
              parent resolves a name. -->
-        <div v-if="campaignName || parentName" class="mt-[0.15rem] flex flex-wrap gap-3 text-[0.7rem] text-[#6a5da0]">
-          <span v-if="campaignName">Campaign: {{ campaignName }}</span>
-          <span v-if="parentName">Sub-task of: {{ parentName }}</span>
+        <div v-if="parentName" class="mt-[0.15rem] flex flex-wrap gap-3 text-[0.7rem] text-[#6a5da0]">
+          <span>Sub-task of: {{ parentName }}</span>
         </div>
         <!-- Clamp long descriptions to 2 lines so one quest can't dominate the list;
              the full text lives in the detail view (QuestDetail). -->

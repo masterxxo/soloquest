@@ -23,12 +23,6 @@ defineProps<{ name: string }>();
       <line x1="8.5" y1="16" x2="13" y2="16" />
     </template>
 
-    <!-- Campaigns — crest / shield -->
-    <template v-else-if="name === 'campaigns'">
-      <path d="M12 3l7 2.5V11c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V5.5L12 3z" />
-      <path d="M9 12l2 2 4-4" />
-    </template>
-
     <!-- Rituals — flame -->
     <template v-else-if="name === 'rituals'">
       <path d="M12 3c.6 3-1.8 4.2-2.8 6.2A5 5 0 0 0 17 12c0-3-2-4.2-2-7-1.2.8-2 2-3 4-.6-2 0-4 0-6z" />

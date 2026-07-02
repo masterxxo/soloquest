@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { db, quests, campaigns, user as userTable } from '@soloquest/db';
+import { db, quests, user as userTable } from '@soloquest/db';
 import {
   XP_REWARDS,
   levelFromTotalXp,
@@ -14,27 +14,14 @@ import {
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 
-// Non-blocking rank sanity check: a quest/sub-task shouldn't out-rank its container.
+// Non-blocking rank sanity check: a sub-task shouldn't out-rank its parent quest.
 // Returns human-readable warnings; it never rejects the write.
 async function buildRankWarnings(
   userId: string,
   difficulty: Difficulty,
-  campaignId?: string | null,
   parentId?: string | null,
 ): Promise<string[]> {
   const warnings: string[] = [];
-
-  if (campaignId) {
-    const [campaign] = await db
-      .select()
-      .from(campaigns)
-      .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)));
-    if (campaign && compareDifficulty(difficulty, campaign.difficulty) > 0) {
-      warnings.push(
-        `Quest rank (${difficulty}) exceeds Campaign rank (${campaign.difficulty})`,
-      );
-    }
-  }
 
   if (parentId) {
     const [parent] = await db
@@ -89,7 +76,6 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         difficulty: input.difficulty,
         xpReward: XP_REWARDS[input.difficulty],
         deadline: input.deadline,
-        campaignId: input.campaignId,
         parentId: input.parentId,
       })
       .returning();
@@ -97,7 +83,6 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     const warnings = await buildRankWarnings(
       userId,
       input.difficulty,
-      input.campaignId,
       input.parentId,
     );
     return c.json({ quest: created, warnings }, 201);
@@ -139,11 +124,10 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .where(and(eq(quests.id, id), eq(quests.userId, userId)))
         .returning();
 
-      // Warn against the effective difficulty and any container set in this request.
+      // Warn against the effective difficulty and any parent set in this request.
       const warnings = await buildRankWarnings(
         userId,
         input.difficulty ?? existing.difficulty,
-        input.campaignId,
         input.parentId,
       );
       return c.json({ quest: updated, warnings });
@@ -197,21 +181,6 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .update(userTable)
         .set({ xp: newXp, level: newLevel })
         .where(eq(userTable.id, sessionUser.id));
-
-      // Completing a quest in a still-untouched campaign nudges it into 'clearing'.
-      // Scoped to status='active' so we never resurrect a completed campaign.
-      if (quest.campaignId) {
-        await tx
-          .update(campaigns)
-          .set({ status: 'clearing' })
-          .where(
-            and(
-              eq(campaigns.id, quest.campaignId),
-              eq(campaigns.userId, sessionUser.id),
-              eq(campaigns.status, 'active'),
-            ),
-          );
-      }
 
       return {
         quest: updatedQuest,

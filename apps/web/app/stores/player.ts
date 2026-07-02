@@ -12,7 +12,7 @@ interface PlayerState {
 }
 
 // Cosmetic hunter rank derived from level — purely presentational (the server has no
-// player-rank concept; quest/campaign difficulty is separate). Single source for the
+// player-rank concept; quest difficulty is separate). Single source for the
 // letter shown in the kartusz portrait badge.
 function rankForLevel(level: number): string {
   if (level >= 50) return 'S';

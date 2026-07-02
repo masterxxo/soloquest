@@ -126,7 +126,7 @@ export const userAchievements = pgTable(
   ],
 );
 
-// Relations declared on the owning side (same pattern as quests.ts / campaigns.ts):
+// Relations declared on the owning side (same pattern as quests.ts):
 // the reciprocal `user hasMany …` would have to live in the Better-Auth-generated
 // userRelations (auth.ts), which the CLI regenerates — so we keep app relations out of it.
 export const recurringQuestsRelations = relations(recurringQuests, ({ one, many }) => ({

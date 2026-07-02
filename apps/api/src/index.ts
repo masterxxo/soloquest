@@ -4,7 +4,6 @@ import { db }  from '@soloquest/db';
 import { auth } from './auth';
 import { sessionMiddleware, type Variables } from './middleware/auth';
 import { questsRouter } from './routes/quests';
-import { campaignsRouter } from './routes/campaigns';
 import { recurringQuestsRouter } from './routes/recurring-quests';
 import { userSettingsRouter } from './routes/user-settings';
 import { startDailyCron } from './cron/daily-tick';
@@ -25,7 +24,6 @@ app.get('/health', async (c) => {
 // Mount via chaining so AppType carries the route types for Hono RPC.
 const routes = app
   .route('/quests', questsRouter)
-  .route('/campaigns', campaignsRouter)
   .route('/recurring-quests', recurringQuestsRouter)
   .route('/user', userSettingsRouter);
 

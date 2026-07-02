@@ -24,16 +24,6 @@ export type CompleteResult = InferResponseType<
   200
 >;
 
-// Campaign list element (carries questCount) vs. the single campaign detail object
-// (carries its quests, each with nested subTasks). Inferred from the campaign routes.
-export type Campaign = InferResponseType<typeof client.api.campaigns.$get>[number];
-export type CampaignDetail = InferResponseType<
-  (typeof client.api.campaigns)[':id']['$get'],
-  200
->;
-// Bare campaign row (no questCount / quests) as returned by create and update.
-export type CampaignRow = InferResponseType<typeof client.api.campaigns.$post, 201>;
-
 // ── Recurring quests ────────────────────────────────────────────────────────
 // A recurring quest's stored row on its own, as returned bare by PATCH
 // /api/recurring-quests/:id (and nested as `quest` in the create response). Used for

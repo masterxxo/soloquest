@@ -5,7 +5,6 @@ export const createQuestSchema = z.object({
   description: z.string().min(1),
   difficulty: z.enum(["E", "D", "C", "B", "A", "S"]).default("E"),
   deadline: z.coerce.date().nullable().optional(), // null = clear the deadline
-  campaignId: z.string().uuid().nullable().optional(), // null = detach from campaign
   parentId: z.string().uuid().nullable().optional(), // null = promote to top-level quest
 });
 
