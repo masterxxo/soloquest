@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia';
 import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
+import { signOut } from '~/lib/auth-client';
 
 const player = usePlayerStore();
 const quests = useQuestsStore();
@@ -10,11 +11,23 @@ const { activeQuests } = storeToRefs(quests);
 onMounted(() => { quests.load(); });
 
 const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId == null).length);
+
+// Sign out lives here (not in the persistent nav): the mobile bottom bar has no room
+// for it, so Status is its single home across desktop and mobile.
+const loggingOut = ref(false);
+async function onSignOut() {
+  loggingOut.value = true;
+  await signOut();
+  await refreshAuthSession();
+  await navigateTo('/login');
+}
 </script>
 
 <template>
-  <div class="grid grid-cols-[minmax(280px,1fr)_minmax(280px,1.1fr)] items-stretch gap-6">
-    <!-- TODO(responsive): single column below 768px. -->
+  <div class="grid grid-cols-1 items-stretch gap-6 md:grid-cols-[minmax(220px,1fr)_minmax(220px,1.1fr)]">
+    <!-- Columns may shrink to 220px so the two-column view already fits at 768px (the
+         content frame is narrowest right at the md breakpoint); the 1fr / 1.1fr ratio is
+         unchanged, so the wide-desktop look stays the same. -->
     <!-- Character stage: the full hunter figure with its drifting haze. The figure is
          sized to the stage (object-contain, bottom-anchored) so the whole hunter —
          face included — stays visible; HubCharacter's viewport-anchored positioning is
@@ -55,6 +68,16 @@ const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId =
         <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Achievements</h2>
         <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
       </section>
+
+      <!-- Sign out only on mobile — on desktop it lives in the persistent nav rail. -->
+      <button
+        type="button"
+        class="mt-auto inline-flex min-h-[44px] w-full items-center justify-center rounded-[8px] border border-line bg-transparent px-4 py-2 text-[0.85rem] font-semibold text-ink-dim font-[inherit] transition-colors enabled:hover:border-danger-line enabled:hover:text-danger disabled:cursor-not-allowed disabled:opacity-60 md:hidden"
+        :disabled="loggingOut"
+        @click="onSignOut"
+      >
+        {{ loggingOut ? 'Signing out…' : 'Sign out' }}
+      </button>
     </div>
   </div>
 </template>

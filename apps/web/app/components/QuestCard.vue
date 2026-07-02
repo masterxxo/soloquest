@@ -82,7 +82,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       <div class="flex flex-none gap-[0.4rem]">
         <button
           v-if="isActive"
-          class="cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+          class="min-h-[44px] cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0"
           :disabled="completing || deleting"
           @click="emit('edit', quest, $event)"
         >
@@ -91,7 +91,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest. -->
         <button
           v-if="isActive && !isSubTask"
-          class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+          class="min-h-[44px] cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0"
           :disabled="completing || deleting"
           @click="onComplete"
         >
@@ -99,7 +99,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         </button>
         <button
           v-if="!isSubTask"
-          class="cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+          class="min-h-[44px] min-w-[44px] cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0 md:min-w-0"
           :disabled="completing || deleting"
           @click="onDelete"
           aria-label="Delete quest"

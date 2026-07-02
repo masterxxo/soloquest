@@ -26,9 +26,13 @@ const tabs = [
   { to: '/glossary',  label: 'Glossary',  icon: 'glossary', soon: true },
   { to: '/items',     label: 'Items',     icon: 'items',    soon: true },
 ];
+// The mobile bottom bar shows only the 4 primary tabs; the stubs (Glossary/Items) are
+// omitted while they're still placeholders.
+const mobileTabs = tabs.filter((t) => !t.soon);
 const isActive = (to: string) =>
   to === '/' ? route.path === '/' : route.path.startsWith(to);
 
+// Sign out lives in the desktop rail; on mobile (rail hidden) it moves to the Status page.
 const loggingOut = ref(false);
 async function onSignOut() {
   loggingOut.value = true;
@@ -85,10 +89,14 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full justify-center p-4 text-[#d0c8f8] md:p-8">
-    <div class="flex w-full max-w-6xl items-stretch">
+  <!-- Fixed height + overflow-hidden: the book doesn't grow with content — scrolling
+       happens inside the content section. On mobile pb-[76px] leaves room above the
+       bottom nav bar; md:p-8 clears that reserve on desktop. -->
+  <div class="flex h-[100dvh] w-full justify-center overflow-hidden p-3 pb-[76px] text-ink md:p-8">
+    <div class="flex h-full w-full max-w-6xl items-stretch">
 
-      <nav class="z-10 flex flex-col gap-1.5 pt-8">
+      <!-- Navigation: vertical rail (desktop only). -->
+      <nav class="z-10 hidden flex-col gap-1.5 pt-8 md:flex">
         <NuxtLink
           v-for="t in tabs" :key="t.label"
           :to="t.soon ? '' : t.to"
@@ -116,8 +124,11 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
         </button>
       </nav>
 
-      <div class="relative flex-1 rounded-[12px] border-2 border-[#3a2d6e] bg-[#0a0618]">
-        <svg ref="frame" class="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+      <div class="relative flex h-full min-h-0 flex-1 flex-col gap-2 rounded-[12px] border-2 border-line-strong bg-panel p-2 md:gap-3 md:p-3">
+        <!-- Drifting fog behind both sections (like the modals); a decorative background
+             layer under the pulsing edge, with content above it via `relative`. -->
+        <SmokeCanvas :density="1.5" :speed="0.6" />
+        <svg ref="frame" class="pointer-events-none absolute inset-0 z-[2] h-full w-full overflow-visible">
           <defs>
             <filter id="grimoire-glow" x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="4.5" />
@@ -129,51 +140,62 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
           <rect class="c2" data-base="0.8"  pathLength="1000" fill="none" stroke="#cdbcff" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="65 935" />
         </svg>
 
-        <span class="absolute left-1.5 top-1.5 h-4 w-4 border-l-2 border-t-2 border-accent" />
-        <span class="absolute right-1.5 top-1.5 h-4 w-4 border-r-2 border-t-2 border-accent" />
-        <span class="absolute bottom-1.5 left-1.5 h-4 w-4 border-b-2 border-l-2 border-accent" />
-        <span class="absolute bottom-1.5 right-1.5 h-4 w-4 border-b-2 border-r-2 border-accent" />
-
-        <div class="relative m-1.5 flex h-[calc(100%-12px)] flex-col overflow-hidden rounded-[6px] border border-[#2a2050] p-5 md:p-6">
-          <!-- Drifting fog in the centre of the page (like the modals); a decorative
-               background layer, with content above it via `relative z-[1]`. -->
-          <SmokeCanvas :density="1.5" :speed="0.6" />
-          <header class="relative z-[1] flex items-center gap-3.5 border-b border-[#2a2050] pb-3.5">
+        <!-- Section 1: header (cartouche) — fixed height, doesn't scroll. -->
+        <section class="relative z-[1] shrink-0 rounded-[6px] border border-line p-3 md:p-5">
+          <FrameCorners />
+          <div class="flex items-center gap-3 md:gap-3.5">
             <div class="relative shrink-0">
-              <div class="flex h-11 w-11 items-end justify-center overflow-hidden rounded-lg border border-[#7c5ce8] bg-[#1a1140]">
+              <div class="flex h-10 w-10 items-end justify-center overflow-hidden rounded-lg border border-accent bg-[#1a1140] md:h-11 md:w-11">
                 <img src="/images/character.png" alt="" class="h-full w-full object-cover object-top" />
               </div>
-              <span class="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-md border-2 border-[#070411] bg-[#7c5ce8] text-[11px] font-medium text-white">
+              <span class="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-md border-2 border-app bg-accent text-[11px] font-medium text-white">
                 {{ player.rank }}
               </span>
             </div>
-            <div class="flex-1">
-              <div class="mb-1.5 text-[13px] text-[#efeaff]">
-                {{ player.name ?? 'Hunter' }} · <span class="text-xs text-[#8a7fb5]">Level {{ player.level }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="mb-1.5 truncate text-[13px] text-ink-bright">
+                {{ player.name ?? 'Hunter' }} · <span class="text-xs text-ink-dim">Level {{ player.level }}</span>
               </div>
-              <div class="mb-1 flex justify-end text-[10px] text-[#8a7fb5]">{{ player.progress.current }} / {{ player.xpForNext }} XP</div>
+              <div class="mb-1 flex justify-end text-[10px] text-ink-dim">{{ player.progress.current }} / {{ player.xpForNext }} XP</div>
               <div class="h-1.5 overflow-hidden rounded-full bg-[#1a1140]">
-                <div class="h-full bg-[#7c5ce8] transition-[width] duration-500" :style="{ width: player.xpPct + '%' }" />
+                <div class="h-full bg-accent transition-[width] duration-500" :style="{ width: player.xpPct + '%' }" />
               </div>
             </div>
-            <div class="flex gap-2">
-              <div class="rounded-md bg-[#1a1140] px-2.5 py-1 text-center">
-                <div class="text-sm font-medium text-[#d0c8f8]">{{ player.todayCount }}</div>
-                <div class="text-[9px] text-[#8a7fb5]">TODAY</div>
+            <div class="flex shrink-0 gap-1.5 md:gap-2">
+              <div class="rounded-md bg-[#1a1140] px-2 py-1 text-center md:px-2.5">
+                <div class="text-sm font-medium text-ink">{{ player.todayCount }}</div>
+                <div class="text-[9px] text-ink-dim">TODAY</div>
               </div>
-              <div class="rounded-md border border-[#5a2030] bg-[#2a1320] px-2.5 py-1 text-center">
-                <div class="text-sm font-medium text-[#f0a0a0]">{{ player.overdueCount }}</div>
+              <div class="rounded-md border border-danger-line bg-danger-bg px-2 py-1 text-center md:px-2.5">
+                <div class="text-sm font-medium text-danger">{{ player.overdueCount }}</div>
                 <div class="text-[9px] text-[#c87a7a]">OVERDUE</div>
               </div>
             </div>
-          </header>
+          </div>
+        </section>
 
-          <main class="relative z-[1] mt-3.5 min-h-0 flex-1 overflow-y-auto">
+        <!-- Section 2: content — scrolls inside this section, the page doesn't grow. -->
+        <section class="relative z-[1] min-h-0 flex-1 rounded-[6px] border border-line">
+          <FrameCorners />
+          <div class="h-full overflow-y-auto p-4 md:p-5">
             <slot />
-          </main>
-        </div>
+          </div>
+        </section>
       </div>
     </div>
+
+    <!-- Navigation: bottom bar (mobile only). Active tab highlighted in the accent color. -->
+    <nav class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-line bg-panel/95 px-2 py-1.5 backdrop-blur md:hidden">
+      <NuxtLink
+        v-for="t in mobileTabs" :key="t.label"
+        :to="t.to"
+        class="flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] transition-colors"
+        :class="isActive(t.to) ? 'text-accent-light' : 'text-ink-dim'"
+      >
+        <GrimoireIcon :name="t.icon" class="h-5 w-5" />
+        <span>{{ t.label }}</span>
+      </NuxtLink>
+    </nav>
 
     <!-- Global "System" feedback, above the persistent frame. -->
     <LevelUpToast :level="feedback.levelUpTo" />
