@@ -3,12 +3,20 @@ import { storeToRefs } from 'pinia';
 import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
 import { signOut } from '~/lib/auth-client';
+import { useUserSettings } from '~/composables/useUserSettings';
 
 const player = usePlayerStore();
 const quests = useQuestsStore();
 const { activeQuests } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
+
+// Account settings — timezone picker. Status is the account hub, so it lives here.
+const settings = useUserSettings();
+
+function onTimezoneChange(event: Event) {
+  settings.setTimezone((event.target as HTMLSelectElement).value);
+}
 
 const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId == null).length);
 
@@ -67,6 +75,40 @@ async function onSignOut() {
       <section>
         <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Achievements</h2>
         <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
+      </section>
+
+      <!-- Account settings. Timezone drives the "required day" in ritual heatmaps and
+           the daily cron, so it's functional, not cosmetic. Saved on change. -->
+      <section>
+        <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Settings</h2>
+        <label class="flex flex-col gap-[0.4rem] text-[0.75rem] text-ink-muted">
+          <span class="flex items-center gap-2">
+            Timezone
+            <span class="text-ink-dim">· {{ settings.currentOffset.value || '—' }}</span>
+          </span>
+          <div class="flex items-center gap-2">
+            <select
+              :value="settings.timezone.value"
+              :disabled="settings.saving.value || settings.loading.value"
+              class="min-w-0 flex-1 rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              @change="onTimezoneChange"
+            >
+              <option v-for="tz in settings.timezones.value" :key="tz" :value="tz">{{ tz }}</option>
+            </select>
+            <button
+              type="button"
+              :disabled="settings.saving.value || settings.loading.value"
+              class="flex-none cursor-pointer rounded-none border border-line bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.8rem] font-semibold text-ink transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+              @click="settings.detect()"
+            >
+              Detect
+            </button>
+          </div>
+          <!-- Discreet, mutually-exclusive status line under the control. -->
+          <p v-if="settings.saveError.value" class="m-0 text-[0.75rem] text-danger-bright">{{ settings.saveError.value }}</p>
+          <p v-else-if="settings.loadError.value" class="m-0 text-[0.75rem] text-gold">Couldn't load settings — showing default (UTC).</p>
+          <p v-else-if="settings.justSaved.value" class="m-0 text-[0.75rem] text-accent-soft">Saved</p>
+        </label>
       </section>
 
       <!-- Sign out only on mobile — on desktop it lives in the persistent nav rail. -->
