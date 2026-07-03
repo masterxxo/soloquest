@@ -10,6 +10,7 @@ import {
 } from '~/lib/api-client';
 import { usePlayerStore } from '~/stores/player';
 import { useFeedbackStore } from '~/stores/feedback';
+import { localDateString } from '~/lib/date';
 
 // Single client-side cache for the per-user lists. It outlives individual pages (the
 // persistent grimoire layout + several routes all read the same arrays), and applies
@@ -21,6 +22,10 @@ interface QuestsState {
   activeQuests: Quest[];
   recurringQuests: RecurringQuestWithStreak[];
   loaded: boolean;
+  // Local calendar day the lists were last fetched on (YYYY-MM-DD). The server-computed
+  // day-sensitive flags (isCompletedToday / isDueToday, overdue) are only valid for the
+  // day they were fetched, so we track this to invalidate the cache across midnight.
+  loadedDate: string | null;
 }
 
 export const useQuestsStore = defineStore('quests', {
@@ -28,13 +33,17 @@ export const useQuestsStore = defineStore('quests', {
     activeQuests: [],
     recurringQuests: [],
     loaded: false,
+    loadedDate: null,
   }),
   actions: {
-    // Fetch both per-user lists once. Pages call this on mount; the flag keeps
-    // navigation between pages from refetching. Always fetched client-side (per-user,
-    // behind login — no SSR benefit, avoids the session-fetch baseURL quirks).
+    // Fetch both per-user lists. Pages call this on mount; the cache keeps navigation
+    // between pages from refetching — EXCEPT once the local calendar day has changed
+    // since the last load, since the day-sensitive flags (done/due today, overdue) go
+    // stale when the tab is left open across midnight. Always fetched client-side
+    // (per-user, behind login — no SSR benefit, avoids the session-fetch baseURL quirks).
     async load() {
-      if (this.loaded) return;
+      const today = localDateString();
+      if (this.loaded && this.loadedDate === today) return;
       const [quests, recurring] = await Promise.all([
         client.api.quests
           .$get({ query: { status: 'active', include: 'subTasks' } })
@@ -48,6 +57,7 @@ export const useQuestsStore = defineStore('quests', {
       this.activeQuests = quests as Quest[];
       this.recurringQuests = recurring as RecurringQuestWithStreak[];
       this.loaded = true;
+      this.loadedDate = today;
     },
 
     // ── One-off quests ──────────────────────────────────────────────────────
