@@ -5,8 +5,9 @@ on:
     branches: [master]
 
 jobs:
-  # Gate the deploy on a green end-to-end typecheck (api/db/shared/web).
-  typecheck:
+  # Gate the deploy on a green end-to-end typecheck (api/db/shared/web) and the
+  # unit test suite (api/shared). Both share a single install.
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +29,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Test
+        run: pnpm test
+
   deploy:
-    needs: typecheck
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Coolify deploy — web
