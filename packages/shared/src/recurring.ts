@@ -5,6 +5,62 @@ import { z } from "zod";
 export const RECURRENCE_TYPES = ['daily', 'every_x_days', 'weekdays'] as const;
 export type RecurrenceType = (typeof RECURRENCE_TYPES)[number];
 
+// Highest valid weekday bitmask: bits 0..6 (Mon..Sun) all set.
+const MAX_WEEKDAY_MASK = 0b1111111;
+
+// Thrown by normalizeRecurrence for an invalid recurrenceType/recurrenceValue
+// combination. Routes catch this to return a 400 instead of a generic 500.
+export class RecurrenceValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecurrenceValidationError';
+  }
+}
+
+/**
+ * Validate and normalize a recurrence config — the single source of truth for the
+ * cross-field rules, shared by both create and update so they can't drift:
+ *   daily        → recurrenceValue is forced to null (carries no interval/bitmask)
+ *   every_x_days → requires a positive integer interval
+ *   weekdays     → requires a weekday bitmask in 1..127 (bit 0 = Mon … bit 6 = Sun)
+ *
+ * Throws RecurrenceValidationError on an invalid combination. On success returns the
+ * value to persist. This lives here (not just in the Zod schema) because the update
+ * path validates the *effective* config — request fields merged over the stored row —
+ * which a stateless schema refinement cannot see.
+ */
+export function normalizeRecurrence(config: {
+  recurrenceType: RecurrenceType;
+  recurrenceValue?: number | null;
+}): { recurrenceType: RecurrenceType; recurrenceValue: number | null } {
+  const { recurrenceType } = config;
+  const value = config.recurrenceValue ?? null;
+
+  switch (recurrenceType) {
+    case 'daily':
+      return { recurrenceType, recurrenceValue: null };
+
+    case 'every_x_days':
+      if (value === null || !Number.isInteger(value) || value < 1) {
+        throw new RecurrenceValidationError(
+          'recurrenceValue must be a positive integer when recurrenceType is "every_x_days"',
+        );
+      }
+      return { recurrenceType, recurrenceValue: value };
+
+    case 'weekdays':
+      if (value === null || !Number.isInteger(value) || value < 1 || value > MAX_WEEKDAY_MASK) {
+        throw new RecurrenceValidationError(
+          'recurrenceValue must be a weekday bitmask (1..127) when recurrenceType is "weekdays"',
+        );
+      }
+      return { recurrenceType, recurrenceValue: value };
+
+    default:
+      throw new RecurrenceValidationError(`Unknown recurrenceType: ${String(recurrenceType)}`);
+  }
+}
+
 // Plain object kept separate so updateRecurringQuestSchema can call .partial()
 // on it — .partial() is unavailable once a schema is wrapped by .superRefine().
 const recurringQuestFields = z.object({

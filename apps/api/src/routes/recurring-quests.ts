@@ -7,14 +7,14 @@ import {
   recurringQuestCompletions,
   recurringQuestStreaks,
   userSettings,
-  user as userTable,
 } from '@soloquest/db';
 import {
   createRecurringQuestSchema,
   updateRecurringQuestSchema,
   completeRecurringQuestSchema,
   recurringQuestIdParamSchema,
-  levelFromTotalXp,
+  normalizeRecurrence,
+  RecurrenceValidationError,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 import {
@@ -23,10 +23,12 @@ import {
   fromDateString,
   wasRequiredOn,
   previousRequiredDate,
+  isCompletableDate,
   calendarWindowStart,
   buildRitualCalendar,
 } from '../lib/recurrence';
 import { checkAndAwardAchievements } from '../lib/streak';
+import { grantXp } from '../lib/xp';
 
 // Completing a recurring quest always grants a flat reward, independent of difficulty —
 // the value of a habit is in the repetition, not the one-off rank.
@@ -82,6 +84,15 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
     const userId = c.get('user')!.id;
     const input = c.req.valid('json');
 
+    // Single source of truth for the cross-field recurrence rules (also used by PATCH).
+    let recurrence;
+    try {
+      recurrence = normalizeRecurrence(input);
+    } catch (err) {
+      if (err instanceof RecurrenceValidationError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+
     const result = await db.transaction(async (tx) => {
       const [quest] = await tx
         .insert(recurringQuests)
@@ -90,10 +101,8 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
           title: input.title,
           description: input.description,
           difficulty: input.difficulty,
-          recurrenceType: input.recurrenceType,
-          // daily carries no value; the others store interval / bitmask.
-          recurrenceValue:
-            input.recurrenceType === 'daily' ? null : input.recurrenceValue ?? null,
+          recurrenceType: recurrence.recurrenceType,
+          recurrenceValue: recurrence.recurrenceValue,
         })
         .returning();
       if (!quest) throw new Error('Failed to create recurring quest');
@@ -134,9 +143,32 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
         return c.json({ error: 'Only active recurring quests can be edited' }, 409);
       }
 
+      // Validate the *effective* recurrence (request merged over the stored row) so a
+      // partial PATCH can't leave an inconsistent type/value pair (e.g. switching to
+      // every_x_days without an interval). An explicit null is honored; an omitted
+      // field falls back to the existing value.
+      const effectiveType = input.recurrenceType ?? existing.recurrenceType;
+      const effectiveValue =
+        input.recurrenceValue !== undefined ? input.recurrenceValue : existing.recurrenceValue;
+
+      let recurrence;
+      try {
+        recurrence = normalizeRecurrence({
+          recurrenceType: effectiveType,
+          recurrenceValue: effectiveValue,
+        });
+      } catch (err) {
+        if (err instanceof RecurrenceValidationError) return c.json({ error: err.message }, 400);
+        throw err;
+      }
+
       const [updated] = await db
         .update(recurringQuests)
-        .set(input)
+        .set({
+          ...input,
+          recurrenceType: recurrence.recurrenceType,
+          recurrenceValue: recurrence.recurrenceValue,
+        })
         .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)))
         .returning();
       if (!updated) throw new Error('Failed to update recurring quest');
@@ -196,6 +228,18 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       }
 
       const completedDateObj = fromDateString(completedDate);
+
+      // Reject future dates and anything before the ritual existed — otherwise a client
+      // could farm XP, totalCompletions, streaks and achievements with fabricated dates.
+      const timezone = await getUserTimezone(userId);
+      const today = getUserDate(new Date(), timezone);
+      if (!isCompletableDate(completedDateObj, today, quest.createdAt)) {
+        return c.json(
+          { error: "Completion date must be within the ritual's active range" },
+          400,
+        );
+      }
+
       if (!wasRequiredOn(quest, completedDateObj)) {
         return c.json({ error: 'Quest was not required on this date' }, 400);
       }
@@ -245,19 +289,8 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
           .returning();
         if (!updatedStreak) throw new Error('Failed to update streak');
 
-        // Server-authoritative XP: flat +10, recompute level from the new total.
-        const [currentUser] = await tx
-          .select()
-          .from(userTable)
-          .where(eq(userTable.id, userId));
-        if (!currentUser) throw new Error('Authenticated user not found');
-        const prevLevel = currentUser.level ?? 1;
-        const newXp = (currentUser.xp ?? 0) + RECURRING_XP_REWARD;
-        const { level: newLevel } = levelFromTotalXp(newXp);
-        await tx
-          .update(userTable)
-          .set({ xp: newXp, level: newLevel })
-          .where(eq(userTable.id, userId));
+        // Server-authoritative XP: flat reward via the shared atomic helper.
+        const player = await grantXp(tx, userId, RECURRING_XP_REWARD);
 
         const { newAchievements } = await checkAndAwardAchievements(
           tx,
@@ -273,8 +306,8 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
             longestStreak: updatedStreak.longestStreak,
             totalCompletions: updatedStreak.totalCompletions,
           },
-          player: { xp: newXp, level: newLevel },
-          leveledUp: newLevel > prevLevel,
+          player: { xp: player.xp, level: player.level },
+          leveledUp: player.leveledUp,
           newAchievements,
         };
       });

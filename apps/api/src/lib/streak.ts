@@ -1,17 +1,10 @@
 import { and, eq } from 'drizzle-orm';
-import {
-  db,
-  achievements,
-  userAchievements,
-  recurringQuestStreaks,
-} from '@soloquest/db';
+import { achievements, userAchievements, recurringQuestStreaks } from '@soloquest/db';
+import type { DrizzleDB } from './db';
 
-// Accepts both the top-level db (cron, plain requests) and the transaction handle
-// drizzle hands to db.transaction(cb) (the completion flow). Both expose the same
-// query-builder surface this module uses.
-export type DrizzleDB =
-  | typeof db
-  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+// Re-exported for existing importers (e.g. the daily cron) now that the type lives
+// in a neutral module rather than being coupled to this achievements code.
+export type { DrizzleDB };
 
 export type Achievement = typeof achievements.$inferSelect;
 type Streak = typeof recurringQuestStreaks.$inferSelect;

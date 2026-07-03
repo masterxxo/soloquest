@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { db, quests, user as userTable } from '@soloquest/db';
+import { db, quests } from '@soloquest/db';
 import {
   XP_REWARDS,
-  levelFromTotalXp,
   compareDifficulty,
   type Difficulty,
   createQuestSchema,
@@ -13,6 +12,8 @@ import {
   questListQuerySchema,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
+import { grantXp } from '../lib/xp';
+import { findOwnedQuest } from '../lib/quests';
 
 // Non-blocking rank sanity check: a sub-task shouldn't out-rank its parent quest.
 // Returns human-readable warnings; it never rejects the write.
@@ -67,6 +68,13 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   .post('/', zValidator('json', createQuestSchema), async (c) => {
     const userId = c.get('user')!.id;
     const input = c.req.valid('json');
+
+    // A parent must exist and belong to the caller — never nest under a foreign quest.
+    if (input.parentId) {
+      const parent = await findOwnedQuest(db, input.parentId, userId);
+      if (!parent) return c.json({ error: 'Parent quest not found' }, 404);
+    }
+
     const [created] = await db
       .insert(quests)
       .values({
@@ -104,15 +112,17 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         return c.json({ error: 'No fields to update' }, 400);
       }
 
-      const [existing] = await db
-        .select()
-        .from(quests)
-        .where(and(eq(quests.id, id), eq(quests.userId, userId)));
-
+      const existing = await findOwnedQuest(db, id, userId);
       if (!existing) return c.json({ error: 'Quest not found' }, 404);
       // Closed quests are immutable — their XP has already been granted.
       if (existing.status !== 'active') {
         return c.json({ error: 'Only active quests can be edited' }, 409);
+      }
+
+      // A re-parenting request must point at one of the caller's own quests.
+      if (input.parentId) {
+        const parent = await findOwnedQuest(db, input.parentId, userId);
+        if (!parent) return c.json({ error: 'Parent quest not found' }, 404);
       }
 
       const [updated] = await db
@@ -155,24 +165,9 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     const { id } = c.req.valid('param');
 
     const result = await db.transaction(async (tx) => {
-      const [quest] = await tx
-        .select()
-        .from(quests)
-        .where(and(eq(quests.id, id), eq(quests.userId, sessionUser.id)));
-
+      const quest = await findOwnedQuest(tx, id, sessionUser.id);
       if (!quest) return { error: 'not_found' as const };
       if (quest.status === 'completed') return { error: 'already_completed' as const };
-
-      // Read the authoritative xp/level from the DB inside the transaction.
-      const [currentUser] = await tx
-        .select()
-        .from(userTable)
-        .where(eq(userTable.id, sessionUser.id));
-      if (!currentUser) throw new Error('Authenticated user not found');
-
-      const prevLevel = currentUser.level ?? 1;
-      const newXp = (currentUser.xp ?? 0) + quest.xpReward;
-      const { level: newLevel } = levelFromTotalXp(newXp);
 
       const [updatedQuest] = await tx
         .update(quests)
@@ -181,15 +176,13 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .returning();
       if (!updatedQuest) throw new Error('Failed to complete quest');
 
-      await tx
-        .update(userTable)
-        .set({ xp: newXp, level: newLevel })
-        .where(eq(userTable.id, sessionUser.id));
+      // Server-authoritative XP: atomic increment + derived level, inside this tx.
+      const player = await grantXp(tx, sessionUser.id, quest.xpReward);
 
       return {
         quest: updatedQuest,
-        player: { xp: newXp, level: newLevel },
-        leveledUp: newLevel > prevLevel,
+        player: { xp: player.xp, level: player.level },
+        leveledUp: player.leveledUp,
       };
     });
 

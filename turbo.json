@@ -4,6 +4,7 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".output/**", ".nuxt/**"] },
     "dev": { "cache": false, "persistent": true },
     "typecheck": { "dependsOn": ["^typecheck"] },
+    "test": { "dependsOn": ["^build"] },
     "lint": {},
     "db:generate": { "cache": false },
     "db:migrate": { "cache": false }
