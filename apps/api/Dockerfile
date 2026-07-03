@@ -19,6 +19,11 @@ FROM base AS builder
 COPY --from=pruner /app/out/json/ .
 RUN pnpm install --frozen-lockfile
 COPY --from=pruner /app/out/full/ .
+# `turbo prune` doesn't carry root-level configs into the pruned context, but every
+# packages/*/tsconfig.json and apps/api/tsconfig.json `extends` this base. tsx resolves
+# tsconfig at runtime, so it must exist in the image — copy it from the repo-root build
+# context (it flows into the runner via `COPY --from=builder /app .`).
+COPY tsconfig.base.json ./tsconfig.base.json
 # No build step: the API runs TypeScript directly via tsx (start = "tsx src/index.ts").
 # This keeps workspace deps unbundled — the pruned node_modules is all it needs.
 

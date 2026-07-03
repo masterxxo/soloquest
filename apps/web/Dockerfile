@@ -22,6 +22,11 @@ COPY --from=pruner /app/out/json/ .
 # esbuild resolves its binary from its platform package (no install script required).
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY --from=pruner /app/out/full/ .
+# `turbo prune` doesn't carry root-level configs into the pruned context, but every
+# packages/*/tsconfig.json `extends` this base. Nuxt/Vite (TSConfck) resolves it when it
+# transforms the workspace source (@soloquest/shared), so copy it from the repo-root
+# build context — without it the build fails to resolve the "extends" path.
+COPY tsconfig.base.json ./tsconfig.base.json
 RUN pnpm exec turbo build --filter=@soloquest/web
 
 # 3) Runtime image — Nitro bundles all deps into .output, so we copy only that.
