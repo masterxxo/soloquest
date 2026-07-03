@@ -130,16 +130,20 @@ export function previousRequiredDate(
 }
 
 /**
- * Can this ritual be completed for `date`? Guards against XP/streak farming:
+ * Can this ritual be completed for `completedDate`? Guards against XP/streak farming:
  * no future days, and nothing before the ritual existed.
  *
- * All three arguments are compared at UTC midnight of the user's local day: `date`
- * and `today` come from fromDateString/getUserDate, and `createdAt` (a raw timestamp)
- * is truncated to UTC midnight here — matching how wasRequiredOn anchors its cadence.
+ * All three args are local calendar dates in the user's timezone, formatted 'YYYY-MM-DD'.
+ * Zero-padded date strings compare lexicographically == chronologically, so this is fully
+ * timezone-agnostic: the caller owns the timezone by deriving every date via getUserDate,
+ * keeping `today` and `createdDate` in a single frame of reference (no UTC/local mixing).
  */
-export function isCompletableDate(date: Date, today: Date, createdAt: Date): boolean {
-  const start = toUtcMidnight(createdAt);
-  return date.getTime() >= start.getTime() && date.getTime() <= today.getTime();
+export function isCompletableDate(
+  completedDate: string,
+  today: string,
+  createdDate: string,
+): boolean {
+  return completedDate >= createdDate && completedDate <= today;
 }
 
 /** Status of a single day in a ritual's completion calendar (heatmap). */

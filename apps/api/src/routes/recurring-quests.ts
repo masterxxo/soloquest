@@ -232,8 +232,11 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       // Reject future dates and anything before the ritual existed — otherwise a client
       // could farm XP, totalCompletions, streaks and achievements with fabricated dates.
       const timezone = await getUserTimezone(userId);
-      const today = getUserDate(new Date(), timezone);
-      if (!isCompletableDate(completedDateObj, today, quest.createdAt)) {
+      // Anchor both bounds through getUserDate so today and createdDate share one frame
+      // (the user's local calendar day) — no UTC/local mixing on the day boundary.
+      const today = toDateString(getUserDate(new Date(), timezone));
+      const createdDate = toDateString(getUserDate(quest.createdAt, timezone));
+      if (!isCompletableDate(completedDate, today, createdDate)) {
         return c.json(
           { error: "Completion date must be within the ritual's active range" },
           400,

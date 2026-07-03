@@ -5,9 +5,9 @@ on:
     branches: [master]
 
 jobs:
-  # Gate the deploy on a green end-to-end typecheck (api/db/shared/web) and the
-  # unit test suite (api/shared). Both share a single install.
-  verify:
+  # Typecheck the whole workspace (api/db/shared/web) first — its own job so a failure
+  # is attributed unambiguously, before any tests run.
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,11 +29,30 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+  # Unit tests (api/shared) run only after the typecheck job is green.
+  test:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Test
         run: pnpm test
 
   deploy:
-    needs: verify
+    needs: [typecheck, test]
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Coolify deploy — web
