@@ -7,6 +7,7 @@ import {
 } from '~/lib/api-client';
 import { RANK_COLORS } from '~/composables/useQuestActions';
 import { useRecurringQuestActions } from '~/composables/useRecurringQuestActions';
+import { RECURRING_XP_REWARD } from '@soloquest/shared';
 
 const props = defineProps<{ quest: RecurringQuestWithStreak }>();
 const emit = defineEmits<{
@@ -21,9 +22,6 @@ const emit = defineEmits<{
 
 // Weekday labels in bitmask order: bit 0 = Mon … bit 6 = Sun (matches the DB/recurrence doc).
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-
-// Flat reward — recurring quests always grant +10 XP regardless of (cosmetic) rank.
-const RECURRING_XP = 10;
 
 const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
 
@@ -72,7 +70,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQue
       <p class="mt-[0.15rem] text-[0.7rem] text-[#6a5da0]">🔁 {{ recurrenceLabel }}</p>
       <p v-if="quest.description" class="mb-[0.3rem] mt-[0.2rem] line-clamp-2 text-[0.85rem] text-ink-muted">{{ quest.description }}</p>
       <div class="flex flex-wrap gap-3 text-[0.75rem] text-ink-muted">
-        <span class="font-semibold text-accent-light">+{{ RECURRING_XP }} XP</span>
+        <span class="font-semibold text-accent-light">+{{ RECURRING_XP_REWARD }} XP</span>
         <span class="text-[#f0903c]">
           🔥 {{ quest.streak?.currentStreak ?? 0 }} streak ·
           {{ quest.streak?.totalCompletions ?? 0 }} total

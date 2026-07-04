@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { client, type Quest, type QuestWithWarnings } from '~/lib/api-client';
-import { XP_REWARDS } from '@soloquest/shared';
+import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 
 const props = withDefaults(
   defineProps<{ mode?: 'create' | 'edit'; initial?: Quest | null }>(),
@@ -11,9 +11,6 @@ const emit = defineEmits<{
   updated: [result: QuestWithWarnings];
   cancel: [];
 }>();
-
-const DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
-type Difficulty = (typeof DIFFICULTIES)[number];
 
 const title = ref('');
 const description = ref('');
@@ -156,7 +153,7 @@ async function onSubmit() {
           v-model="difficulty"
           class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
         >
-          <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }} — {{ XP_REWARDS[d] }} XP</option>
+          <option v-for="d in DIFFICULTY_ORDER" :key="d" :value="d">{{ d }} — {{ XP_REWARDS[d] }} XP</option>
         </select>
       </label>
       <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">

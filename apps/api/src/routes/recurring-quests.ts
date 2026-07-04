@@ -15,6 +15,7 @@ import {
   recurringQuestIdParamSchema,
   normalizeRecurrence,
   RecurrenceValidationError,
+  RECURRING_XP_REWARD,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 import {
@@ -29,10 +30,6 @@ import {
 } from '../lib/recurrence';
 import { checkAndAwardAchievements } from '../lib/streak';
 import { grantXp } from '../lib/xp';
-
-// Completing a recurring quest always grants a flat reward, independent of difficulty —
-// the value of a habit is in the repetition, not the one-off rank.
-const RECURRING_XP_REWARD = 10;
 
 // How many weeks back the /stats heatmap shows. Pulled out as a constant so the window
 // can later be bumped to a full year (e.g. 52) in one place.

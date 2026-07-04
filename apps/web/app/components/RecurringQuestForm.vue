@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { client, type RecurringQuest } from '~/lib/api-client';
-import { RECURRENCE_TYPES, type RecurrenceType } from '@soloquest/shared';
+import {
+  DIFFICULTY_ORDER,
+  RECURRING_XP_REWARD,
+  type Difficulty,
+  type RecurrenceType,
+} from '@soloquest/shared';
 
 const props = withDefaults(
   defineProps<{ mode?: 'create' | 'edit'; initial?: RecurringQuest | null }>(),
@@ -11,13 +16,6 @@ const emit = defineEmits<{
   updated: [quest: RecurringQuest];
   cancel: [];
 }>();
-
-const DIFFICULTIES = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
-type Difficulty = (typeof DIFFICULTIES)[number];
-
-// Completing a recurring quest always grants a flat reward — difficulty is purely
-// cosmetic (rank colour on the card). Kept in sync with the backend's RECURRING_XP_REWARD.
-const RECURRING_XP = 10;
 
 // Weekday labels in bitmask order: bit 0 = Mon … bit 6 = Sun (matches the DB/recurrence doc).
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -180,12 +178,12 @@ async function onSubmit() {
 
     <div class="flex gap-[0.7rem]">
       <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-        Rank — always +{{ RECURRING_XP }} XP
+        Rank — always +{{ RECURRING_XP_REWARD }} XP
         <select
           v-model="difficulty"
           class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] font-[inherit] text-ink-soft outline-none focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
         >
-          <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
+          <option v-for="d in DIFFICULTY_ORDER" :key="d" :value="d">{{ d }}</option>
         </select>
       </label>
       <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">

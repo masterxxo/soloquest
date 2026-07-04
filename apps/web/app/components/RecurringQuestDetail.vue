@@ -8,6 +8,7 @@ import {
 } from '~/lib/api-client';
 import { RANK_COLORS } from '~/composables/useQuestActions';
 import { useRecurringQuestActions } from '~/composables/useRecurringQuestActions';
+import { RECURRING_XP_REWARD } from '@soloquest/shared';
 
 const props = defineProps<{ quest: RecurringQuestWithStreak }>();
 const emit = defineEmits<{
@@ -19,9 +20,6 @@ const emit = defineEmits<{
 
 // Weekday labels in bitmask order: bit 0 = Mon … bit 6 = Sun (matches the DB/recurrence doc).
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-
-// Flat reward — recurring quests always grant +10 XP regardless of (cosmetic) rank.
-const RECURRING_XP = 10;
 
 const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
 const createdLabel = computed(() => new Date(props.quest.createdAt).toLocaleDateString());
@@ -177,7 +175,7 @@ const calendar = computed(() => stats.value?.calendar ?? []);
             <dt class="text-[0.78rem] text-ink-muted">Schedule</dt>
             <dd class="m-0 text-right text-[0.85rem] text-ink">{{ recurrenceLabel }}</dd>
             <dt class="text-[0.78rem] text-ink-muted">XP reward</dt>
-            <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ RECURRING_XP }} XP</dd>
+            <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ RECURRING_XP_REWARD }} XP</dd>
             <dt class="text-[0.78rem] text-ink-muted">Due today</dt>
             <dd class="m-0 text-right text-[0.85rem] text-ink">{{ quest.isDueToday ? 'Yes' : 'No' }}</dd>
             <dt class="text-[0.78rem] text-ink-muted">Created</dt>

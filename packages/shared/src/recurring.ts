@@ -1,9 +1,9 @@
 import { z } from "zod";
+import { DIFFICULTY_ORDER, RECURRENCE_TYPE, type RecurrenceType } from "./enums";
 
-// Mirrors the DB recurrence_type enum. Exported so the frontend can build its
-// recurrence picker from a single source of truth.
-export const RECURRENCE_TYPES = ['daily', 'every_x_days', 'weekdays'] as const;
-export type RecurrenceType = (typeof RECURRENCE_TYPES)[number];
+// Re-exported for backwards compatibility; the canonical tuple + type now live in
+// ./enums (the single source of truth shared with pgEnum).
+export type { RecurrenceType };
 
 // Highest valid weekday bitmask: bits 0..6 (Mon..Sun) all set.
 const MAX_WEEKDAY_MASK = 0b1111111;
@@ -66,8 +66,8 @@ export function normalizeRecurrence(config: {
 const recurringQuestFields = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
-  difficulty: z.enum(["E", "D", "C", "B", "A", "S"]).default("E"),
-  recurrenceType: z.enum(RECURRENCE_TYPES),
+  difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
+  recurrenceType: z.enum(RECURRENCE_TYPE),
   // Semantics depend on recurrenceType:
   //   daily        → null
   //   every_x_days → interval in days (required)
