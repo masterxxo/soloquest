@@ -9,4 +9,6 @@ export const authClient = createAuthClient({
   plugins: [inferAdditionalFields<Auth>()],
 });
 
-export const { signIn, signUp, signOut, useSession } = authClient;
+// NOTE: authClient.useSession is intentionally NOT re-exported — it subscribes to a
+// nanostore via an effect scope and OOMs the SSR render worker (see useAuthSession).
+export const { signIn, signUp, signOut } = authClient;

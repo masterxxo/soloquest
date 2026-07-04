@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
-import { signOut } from '~/lib/auth-client';
+import { useSignOut } from '~/composables/useSignOut';
 
 const route = useRoute();
 const player = usePlayerStore();
@@ -32,13 +32,7 @@ const isActive = (to: string) =>
   to === '/' ? route.path === '/' : route.path.startsWith(to);
 
 // Sign out lives in the desktop rail; on mobile (rail hidden) it moves to the Status page.
-const loggingOut = ref(false);
-async function onSignOut() {
-  loggingOut.value = true;
-  await signOut();
-  await refreshAuthSession();
-  await navigateTo('/login');
-}
+const { loggingOut, onSignOut } = useSignOut();
 
 // ── Pulsing edge of light around the book frame ────────────────────────────────
 // Two light sources travel the perimeter at different speeds, in opposite directions,

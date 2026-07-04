@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { type Quest, type CompleteResult } from '~/lib/api-client';
-import { useQuestActions, RANK_COLORS } from '~/composables/useQuestActions';
+import { useQuestActions } from '~/composables/useQuestActions';
+import { rankColor } from '~/lib/ranks';
+import { formatDate } from '~/lib/date';
 
 const props = withDefaults(
   defineProps<{
@@ -27,10 +29,10 @@ const openable = computed(() => props.selectable && !props.isSubTask);
 // Only active quests can be edited/completed (mirrors the backend guard).
 const isActive = computed(() => props.quest.status === 'active');
 
-const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
+const color = computed(() => rankColor(props.quest.difficulty));
 
 const deadlineLabel = computed(() =>
-  props.quest.deadline ? new Date(props.quest.deadline).toLocaleDateString() : null,
+  props.quest.deadline ? formatDate(props.quest.deadline) : null,
 );
 
 const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(
@@ -44,7 +46,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
     <article class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]">
       <span
         class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-        :style="{ color: rankColor, borderColor: rankColor }"
+        :style="{ color, borderColor: color }"
       >
         {{ quest.difficulty }}
       </span>

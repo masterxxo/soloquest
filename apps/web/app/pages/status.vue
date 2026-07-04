@@ -2,7 +2,7 @@
 import { storeToRefs } from 'pinia';
 import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
-import { signOut } from '~/lib/auth-client';
+import { useSignOut } from '~/composables/useSignOut';
 import { useUserSettings } from '~/composables/useUserSettings';
 
 const player = usePlayerStore();
@@ -22,13 +22,7 @@ const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId =
 
 // Sign out lives here (not in the persistent nav): the mobile bottom bar has no room
 // for it, so Status is its single home across desktop and mobile.
-const loggingOut = ref(false);
-async function onSignOut() {
-  loggingOut.value = true;
-  await signOut();
-  await refreshAuthSession();
-  await navigateTo('/login');
-}
+const { loggingOut, onSignOut } = useSignOut();
 </script>
 
 <template>

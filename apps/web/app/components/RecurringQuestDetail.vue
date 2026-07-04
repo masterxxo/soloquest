@@ -6,7 +6,9 @@ import {
   type RecurringCompleteResult,
   type Achievement,
 } from '~/lib/api-client';
-import { RANK_COLORS } from '~/composables/useQuestActions';
+import { rankColor } from '~/lib/ranks';
+import { recurrenceLabel } from '~/lib/recurrence';
+import { formatDate } from '~/lib/date';
 import { useRecurringQuestActions } from '~/composables/useRecurringQuestActions';
 import { RECURRING_XP_REWARD } from '@soloquest/shared';
 
@@ -18,21 +20,9 @@ const emit = defineEmits<{
   edit: [quest: RecurringQuest, event: MouseEvent];
 }>();
 
-// Weekday labels in bitmask order: bit 0 = Mon … bit 6 = Sun (matches the DB/recurrence doc).
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-
-const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
-const createdLabel = computed(() => new Date(props.quest.createdAt).toLocaleDateString());
-
-// Human-readable recurrence summary.
-const recurrenceLabel = computed(() => {
-  const q = props.quest;
-  if (q.recurrenceType === 'daily') return 'Every day';
-  if (q.recurrenceType === 'every_x_days') return `Every ${q.recurrenceValue ?? '?'} days`;
-  const mask = q.recurrenceValue ?? 0;
-  const days = WEEKDAYS.filter((_, i) => ((mask >> i) & 1) === 1);
-  return days.length ? days.join(', ') : 'No days set';
-});
+const color = computed(() => rankColor(props.quest.difficulty));
+const createdLabel = computed(() => formatDate(props.quest.createdAt));
+const recurrence = computed(() => recurrenceLabel(props.quest));
 
 const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQuestActions(
   () => props.quest,
@@ -68,13 +58,13 @@ const calendar = computed(() => stats.value?.calendar ?? []);
     <header class="flex items-center gap-[0.85rem]">
       <span
         class="grid h-[2.4rem] w-[2.4rem] flex-none place-items-center border bg-panel text-[1.1rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-        :style="{ color: rankColor, borderColor: rankColor }"
+        :style="{ color, borderColor: color }"
       >
         {{ quest.difficulty }}
       </span>
       <div class="min-w-0">
         <h2 class="m-0 text-[1.6rem] leading-[1.2] text-ink-soft">{{ quest.title }}</h2>
-        <p class="m-0 mt-[0.15rem] text-[0.8rem] text-[#6a5da0]">🔁 {{ recurrenceLabel }}</p>
+        <p class="m-0 mt-[0.15rem] text-[0.8rem] text-[#6a5da0]">🔁 {{ recurrence }}</p>
       </div>
     </header>
 
@@ -167,13 +157,13 @@ const calendar = computed(() => stats.value?.calendar ?? []);
             <dd class="m-0 text-right text-[0.85rem] text-ink">
               <span
                 class="inline-grid h-6 w-6 place-items-center border bg-panel text-[0.8rem] font-extrabold"
-                :style="{ color: rankColor, borderColor: rankColor }"
+                :style="{ color, borderColor: color }"
               >
                 {{ quest.difficulty }}
               </span>
             </dd>
             <dt class="text-[0.78rem] text-ink-muted">Schedule</dt>
-            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ recurrenceLabel }}</dd>
+            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ recurrence }}</dd>
             <dt class="text-[0.78rem] text-ink-muted">XP reward</dt>
             <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ RECURRING_XP_REWARD }} XP</dd>
             <dt class="text-[0.78rem] text-ink-muted">Due today</dt>

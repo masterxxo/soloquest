@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { levelFromTotalXp, xpForLevel } from '@soloquest/shared';
 import { useQuestsStore } from '~/stores/quests';
+import { bucketByDeadline, localDateString } from '~/lib/date';
 
 // Projection of session.user — the session stays the source of truth. hydrate() runs
 // from the session; applyProgress() applies the server-authoritative result of
@@ -21,14 +22,6 @@ function rankForLevel(level: number): string {
   if (level >= 10) return 'C';
   if (level >= 5) return 'D';
   return 'E';
-}
-
-// Local YYYY-MM-DD key (not toISOString — that would shift by the UTC offset).
-function dateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 export const usePlayerStore = defineStore('player', {
@@ -52,19 +45,14 @@ export const usePlayerStore = defineStore('player', {
 
     // Top-level active quests whose deadline is today (the "today" counter).
     todayCount(): number {
-      const todayKey = dateKey(new Date());
-      return useQuestsStore().activeQuests.filter(
-        (q) => q.parentId == null && q.deadline && dateKey(new Date(q.deadline)) === todayKey,
-      ).length;
+      const topLevel = useQuestsStore().activeQuests.filter((q) => q.parentId == null);
+      return bucketByDeadline(topLevel).dated.get(localDateString())?.length ?? 0;
     },
 
     // Top-level active quests whose deadline is before today (kartusz "OVERDUE" counter).
     overdueCount(): number {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      return useQuestsStore().activeQuests.filter(
-        (q) => q.parentId == null && q.deadline && new Date(q.deadline) < start,
-      ).length;
+      const topLevel = useQuestsStore().activeQuests.filter((q) => q.parentId == null);
+      return bucketByDeadline(topLevel).overdue.length;
     },
   },
   actions: {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { client, type RecurringQuest } from '~/lib/api-client';
+import { WEEKDAYS } from '~/lib/recurrence';
 import {
   DIFFICULTY_ORDER,
   RECURRING_XP_REWARD,
@@ -16,9 +17,6 @@ const emit = defineEmits<{
   updated: [quest: RecurringQuest];
   cancel: [];
 }>();
-
-// Weekday labels in bitmask order: bit 0 = Mon … bit 6 = Sun (matches the DB/recurrence doc).
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 const title = ref('');
 const description = ref('');

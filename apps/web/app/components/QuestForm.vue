@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import { client, type Quest, type QuestWithWarnings } from '~/lib/api-client';
+import { useQuestsStore } from '~/stores/quests';
+import { localDateString } from '~/lib/date';
 import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 
 const props = withDefaults(
@@ -22,8 +25,9 @@ const errorMsg = ref<string | null>(null);
 // Rank warnings from the last server response (non-blocking; shown under difficulty).
 const localWarnings = ref<string[]>([]);
 
-// Options for the parent-quest select, fetched client-side on mount.
-const activeQuests = ref<Quest[]>([]);
+// Parent-quest options come from the shared store (single source of active quests);
+// the picker only needs id/title, which the store list carries.
+const { activeQuests } = storeToRefs(useQuestsStore());
 // In edit mode a quest can't be its own parent.
 const parentChoices = computed(() =>
   activeQuests.value.filter((q) => props.mode !== 'edit' || q.id !== props.initial?.id),
@@ -32,14 +36,11 @@ const parentChoices = computed(() =>
 // XP reward for the selected rank — read from shared, never hardcoded.
 const xpForSelected = computed(() => XP_REWARDS[difficulty.value]);
 
+// Local calendar day (never toISOString — that shifts by the UTC offset and can land
+// the deadline on the wrong day).
 function toDateInput(iso: string) {
-  return new Date(iso).toISOString().slice(0, 10);
+  return localDateString(new Date(iso));
 }
-
-onMounted(async () => {
-  const qRes = await client.api.quests.$get({ query: { status: 'active' } });
-  if (qRes.ok) activeQuests.value = await qRes.json();
-});
 
 // Prefill from `initial` (edit mode); re-syncs if the target quest changes.
 watch(

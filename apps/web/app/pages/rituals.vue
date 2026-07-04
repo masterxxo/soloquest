@@ -8,6 +8,7 @@ import type {
 } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
+import { useEntityModals } from '~/composables/useEntityModals';
 
 // NOTE: "Rituals" is purely the UI name for recurring quests. The API, DB tables and
 // shared types keep the `recurring` vocabulary untouched — this is presentation only.
@@ -17,44 +18,28 @@ const { recurringQuests } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
 
-// Viewport point a modal grows out of — the centre of the element that opened it.
-function originFrom(event?: MouseEvent): { x: number; y: number } | null {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }
-  return null;
-}
+// ── Modals: create / detail / edit ──────────────────────────────────────────────
+// The detail carries streak fields (RecurringQuestWithStreak); the edit form takes a
+// bare row (RecurringQuest) — hence the two type params.
+const {
+  showCreate,
+  createOrigin,
+  openCreate,
+  closeCreate,
+  selected: selectedRitual,
+  detailOrigin,
+  openDetail,
+  closeDetail,
+  editing: editingRitual,
+  editOrigin,
+  openEdit: openEditRitual,
+  closeEdit,
+} = useEntityModals<RecurringQuestWithStreak, RecurringQuest>();
 
-// New-ritual form modal.
-const showNewForm = ref(false);
-const newOrigin = ref<{ x: number; y: number } | null>(null);
-function openNewForm(event?: MouseEvent) {
-  newOrigin.value = originFrom(event);
-  showNewForm.value = true;
-}
 async function onCreated(_quest: RecurringQuest) {
-  showNewForm.value = false;
+  closeCreate();
   await quests.refreshRecurring();
 }
-
-// Ritual detail modal (opened by clicking the ritual name).
-const selectedRitual = ref<RecurringQuestWithStreak | null>(null);
-const detailOrigin = ref<{ x: number; y: number } | null>(null);
-function openDetail(quest: RecurringQuestWithStreak, event?: MouseEvent) {
-  detailOrigin.value = originFrom(event);
-  selectedRitual.value = quest;
-}
-
-// Edit-ritual modal (opened by the Edit button on a card or in the detail).
-const editingRitual = ref<RecurringQuest | null>(null);
-const editOrigin = ref<{ x: number; y: number } | null>(null);
-function openEditRitual(quest: RecurringQuest, event?: MouseEvent) {
-  editOrigin.value = originFrom(event);
-  editingRitual.value = quest;
-}
-
 function onCompleted(result: RecurringCompleteResult) {
   quests.applyRecurringCompleted(result);
 }
@@ -74,15 +59,15 @@ function onAchievementsEarned(achievements: Achievement[]) {
 // From the detail modal: apply, then close it.
 function onDetailCompleted(result: RecurringCompleteResult) {
   onCompleted(result);
-  selectedRitual.value = null;
+  closeDetail();
 }
 function onDetailDeleted(id: string) {
   onDeleted(id);
-  selectedRitual.value = null;
+  closeDetail();
 }
 function onRitualEdited(quest: RecurringQuest) {
   onUpdated(quest);
-  editingRitual.value = null;
+  closeEdit();
 }
 </script>
 
@@ -90,7 +75,7 @@ function onRitualEdited(quest: RecurringQuest) {
   <div class="flex flex-col gap-5">
     <header class="flex items-center justify-between gap-4">
       <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Rituals</h1>
-      <button type="button" class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] font-[inherit] text-[0.8rem] font-semibold text-ink hover:border-accent" @click="openNewForm">+ New Ritual</button>
+      <button type="button" class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] font-[inherit] text-[0.8rem] font-semibold text-ink hover:border-accent" @click="openCreate">+ New Ritual</button>
     </header>
 
     <div class="flex flex-col gap-[0.7rem]">
@@ -111,10 +96,10 @@ function onRitualEdited(quest: RecurringQuest) {
 
     <!-- New-ritual form modal. -->
     <HubPanel
-      v-if="showNewForm"
+      v-if="showCreate"
       title="New Ritual"
-      :origin="newOrigin"
-      @close="showNewForm = false"
+      :origin="createOrigin"
+      @close="closeCreate"
     >
       <RecurringQuestForm mode="create" @created="onCreated" />
     </HubPanel>
@@ -125,7 +110,7 @@ function onRitualEdited(quest: RecurringQuest) {
       title="Ritual"
       :origin="detailOrigin"
       :max-width="980"
-      @close="selectedRitual = null"
+      @close="closeDetail"
     >
       <RecurringQuestDetail
         :quest="selectedRitual"
@@ -141,13 +126,13 @@ function onRitualEdited(quest: RecurringQuest) {
       v-if="editingRitual"
       title="Edit Ritual"
       :origin="editOrigin"
-      @close="editingRitual = null"
+      @close="closeEdit"
     >
       <RecurringQuestForm
         mode="edit"
         :initial="editingRitual"
         @updated="onRitualEdited"
-        @cancel="editingRitual = null"
+        @cancel="closeEdit"
       />
     </HubPanel>
   </div>

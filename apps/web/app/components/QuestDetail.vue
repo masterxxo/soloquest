@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { type Quest, type CompleteResult } from '~/lib/api-client';
-import { useQuestActions, RANK_COLORS } from '~/composables/useQuestActions';
+import { useQuestActions } from '~/composables/useQuestActions';
+import { rankColor } from '~/lib/ranks';
+import { formatDate } from '~/lib/date';
 
 const props = defineProps<{
   quest: Quest;
@@ -14,11 +16,11 @@ const emit = defineEmits<{
 
 const isActive = computed(() => props.quest.status === 'active');
 
-const rankColor = computed(() => RANK_COLORS[props.quest.difficulty] ?? '#8a8f98');
+const color = computed(() => rankColor(props.quest.difficulty));
 const deadlineLabel = computed(() =>
-  props.quest.deadline ? new Date(props.quest.deadline).toLocaleDateString() : null,
+  props.quest.deadline ? formatDate(props.quest.deadline) : null,
 );
-const createdLabel = computed(() => new Date(props.quest.createdAt).toLocaleDateString());
+const createdLabel = computed(() => formatDate(props.quest.createdAt));
 const subCount = computed(() => props.quest.subTasks?.length ?? 0);
 
 const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(
@@ -33,7 +35,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
     <header class="flex items-center gap-[0.85rem]">
       <span
         class="grid h-[2.4rem] w-[2.4rem] flex-none place-items-center border bg-panel text-[1.1rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-        :style="{ color: rankColor, borderColor: rankColor }"
+        :style="{ color, borderColor: color }"
       >
         {{ quest.difficulty }}
       </span>
@@ -102,7 +104,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
             <dd class="m-0 text-right text-[0.85rem] text-ink">
               <span
                 class="inline-grid h-6 w-6 place-items-center border bg-panel text-[0.8rem] font-extrabold"
-                :style="{ color: rankColor, borderColor: rankColor }"
+                :style="{ color, borderColor: color }"
               >
                 {{ quest.difficulty }}
               </span>

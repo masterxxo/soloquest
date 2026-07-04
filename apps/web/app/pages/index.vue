@@ -7,6 +7,8 @@ import {
   type CompleteResult,
 } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
+import { useEntityModals } from '~/composables/useEntityModals';
+import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
 const { activeQuests } = storeToRefs(quests);
@@ -36,40 +38,32 @@ async function quickAdd() {
   }
 }
 
-// ── New-quest form (full) ───────────────────────────────────────────────────────
-const showNewQuestForm = ref(false);
-const newQuestOrigin = ref<{ x: number; y: number } | null>(null);
-function openNewQuestForm(event?: MouseEvent) {
-  newQuestOrigin.value = originFrom(event);
-  showNewQuestForm.value = true;
-}
+// ── Modals: create / detail / edit ──────────────────────────────────────────────
+// Open state + animation origins live in the shared composable; the entity-specific
+// glue (which store method each result applies) stays here.
+const {
+  showCreate,
+  createOrigin,
+  openCreate,
+  closeCreate,
+  selected: selectedQuest,
+  detailOrigin,
+  openDetail: openQuestDetail,
+  closeDetail,
+  editing: editingQuest,
+  editOrigin,
+  openEdit: openEditQuest,
+  closeEdit,
+} = useEntityModals<Quest>();
+
 function onCreated(result: QuestWithWarnings) {
   quests.addQuest(result);
-  showNewQuestForm.value = false;
-}
-
-// ── Quest detail ────────────────────────────────────────────────────────────────
-const selectedQuest = ref<Quest | null>(null);
-const questDetailOrigin = ref<{ x: number; y: number } | null>(null);
-function openQuestDetail(quest: Quest, event?: MouseEvent) {
-  questDetailOrigin.value = originFrom(event);
-  selectedQuest.value = quest;
-}
-
-// ── Edit quest ────────────────────────────────────────────────────────────────
-// A dedicated modal (no inline editing). Opened from a card's or the detail's Edit
-// button; stacks on top of the detail modal when one is open.
-const editingQuest = ref<Quest | null>(null);
-const editQuestOrigin = ref<{ x: number; y: number } | null>(null);
-function openEditQuest(quest: Quest, event?: MouseEvent) {
-  editQuestOrigin.value = originFrom(event);
-  editingQuest.value = quest;
+  closeCreate();
 }
 function onQuestEdited(result: QuestWithWarnings) {
   onUpdated(result);
-  editingQuest.value = null;
+  closeEdit();
 }
-
 function onCompleted(result: CompleteResult) {
   quests.applyCompleted(result);
 }
@@ -83,21 +77,11 @@ function onUpdated(result: QuestWithWarnings) {
 }
 function onDetailCompleted(result: CompleteResult) {
   onCompleted(result);
-  selectedQuest.value = null;
+  closeDetail();
 }
 function onDetailDeleted(id: string) {
   onDeleted(id);
-  selectedQuest.value = null;
-}
-
-// Viewport point a modal grows out of — the centre of the element that opened it.
-function originFrom(event?: MouseEvent): { x: number; y: number } | null {
-  const el = event?.currentTarget;
-  if (el instanceof HTMLElement) {
-    const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }
-  return null;
+  closeDetail();
 }
 
 // ── Grouping by deadline ────────────────────────────────────────────────────────
@@ -108,45 +92,15 @@ type QuestGroup = {
   quests: Quest[];
 };
 
-// Local YYYY-MM-DD key (not toISOString — that would shift by the UTC offset).
-function dateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 const questGroups = computed<QuestGroup[]>(() => {
   // Only top-level quests; sub-tasks render nested inside their parent's QuestCard.
   const list = (activeQuests.value ?? []).filter((q) => q.parentId == null);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayKey = dateKey(today);
-
-  let overdue: Quest[] | null = null;
-  let standing: Quest[] | null = null;
-  const dated = new Map<string, Quest[]>();
-
-  for (const q of list) {
-    if (!q.deadline) {
-      (standing ??= []).push(q);
-      continue;
-    }
-    const d = new Date(q.deadline);
-    if (d < today) {
-      (overdue ??= []).push(q);
-    } else {
-      const key = dateKey(d);
-      const bucket = dated.get(key);
-      if (bucket) bucket.push(q);
-      else dated.set(key, [q]);
-    }
-  }
+  const { overdue, dated, standing } = bucketByDeadline(list);
+  const todayKey = localDateString();
 
   const groups: QuestGroup[] = [];
 
-  if (overdue) {
+  if (overdue.length) {
     overdue.sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime());
     groups.push({ key: 'overdue', label: 'OVERDUE', isOverdue: true, quests: overdue });
   }
@@ -156,16 +110,14 @@ const questGroups = computed<QuestGroup[]>(() => {
     bucket.sort((a, b) => a.title.localeCompare(b.title));
     const [y, m, day] = key.split('-').map(Number);
     const d = new Date(y!, m! - 1, day!);
-    const datePart = d
-      .toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })
-      .toUpperCase();
-    const weekday = d.toLocaleDateString('pl-PL', { weekday: 'long' }).toUpperCase();
+    const datePart = formatDate(d, { day: 'numeric', month: 'short' }).toUpperCase();
+    const weekday = formatDate(d, { weekday: 'long' }).toUpperCase();
     const label =
       key === todayKey ? `TODAY · ${datePart} · ${weekday}` : `${datePart} · ${weekday}`;
     groups.push({ key, label, isOverdue: false, quests: bucket });
   }
 
-  if (standing) {
+  if (standing.length) {
     standing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     groups.push({ key: 'standing', label: 'STANDING ORDERS', isOverdue: false, quests: standing });
   }
@@ -196,7 +148,7 @@ const questGroups = computed<QuestGroup[]>(() => {
         <button
           type="button"
           class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
-          @click="openNewQuestForm"
+          @click="openCreate"
         >+ New Quest</button>
       </form>
     </header>
@@ -227,10 +179,10 @@ const questGroups = computed<QuestGroup[]>(() => {
 
     <!-- New-quest form modal. -->
     <HubPanel
-      v-if="showNewQuestForm"
+      v-if="showCreate"
       title="New Quest"
-      :origin="newQuestOrigin"
-      @close="showNewQuestForm = false"
+      :origin="createOrigin"
+      @close="closeCreate"
     >
       <QuestForm mode="create" @created="onCreated" />
     </HubPanel>
@@ -239,9 +191,9 @@ const questGroups = computed<QuestGroup[]>(() => {
     <HubPanel
       v-if="selectedQuest"
       title="Quest"
-      :origin="questDetailOrigin"
+      :origin="detailOrigin"
       :max-width="980"
-      @close="selectedQuest = null"
+      @close="closeDetail"
     >
       <QuestDetail
         :quest="selectedQuest"
@@ -255,14 +207,14 @@ const questGroups = computed<QuestGroup[]>(() => {
     <HubPanel
       v-if="editingQuest"
       title="Edit Quest"
-      :origin="editQuestOrigin"
-      @close="editingQuest = null"
+      :origin="editOrigin"
+      @close="closeEdit"
     >
       <QuestForm
         mode="edit"
         :initial="editingQuest"
         @updated="onQuestEdited"
-        @cancel="editingQuest = null"
+        @cancel="closeEdit"
       />
     </HubPanel>
   </div>

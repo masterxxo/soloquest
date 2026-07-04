@@ -1,7 +1,7 @@
 import { client, type UserSettings } from '~/lib/api-client';
 
-// Krótka lista awaryjna, gdyby `Intl.supportedValuesOf` było niedostępne (stare
-// środowiska). UTC zawsze na początku — to domyślna strefa serwera.
+// Short fallback list for when `Intl.supportedValuesOf` is unavailable (older
+// environments). UTC always first — it's the server's default timezone.
 const FALLBACK_TIMEZONES = [
   'UTC',
   'Europe/London',
@@ -18,24 +18,24 @@ const FALLBACK_TIMEZONES = [
   'Australia/Sydney',
 ];
 
-// Pełna lista stref IANA z przeglądarki (fallback na krótką listę powyżej).
+// Full IANA timezone list from the browser (falls back to the short list above).
 function supportedTimezones(): string[] {
   const supportedValuesOf = (Intl as { supportedValuesOf?: (key: string) => string[] })
     .supportedValuesOf;
   if (typeof supportedValuesOf === 'function') {
     try {
       const zones = supportedValuesOf('timeZone');
-      // Niektóre przeglądarki pomijają UTC na liście — dopilnuj, że zawsze jest.
+      // Some browsers omit UTC from the list — make sure it's always present.
       return zones.includes('UTC') ? zones : ['UTC', ...zones];
     } catch {
-      /* niżej — fallback */
+      /* fall through to the fallback below */
     }
   }
   return FALLBACK_TIMEZONES;
 }
 
-// Aktualny offset dla danej strefy (np. `UTC+02:00`), liczony dla „teraz", więc
-// odzwierciedla aktualny czas letni/zimowy. GMT → UTC dla spójnego wyglądu.
+// Current offset for a timezone (e.g. `UTC+02:00`), computed for "now" so it reflects
+// the current DST state. GMT → UTC for a consistent look.
 function offsetLabel(timezone: string): string {
   try {
     const parts = new Intl.DateTimeFormat(undefined, {
@@ -50,9 +50,9 @@ function offsetLabel(timezone: string): string {
   }
 }
 
-// Data layer + zapis strefy czasowej użytkownika, po stronie klienta (RPC).
-// Na razie używa tego wyłącznie strona Status, więc trzymamy to lokalnie w composable
-// zamiast rozbudowywać osobny store.
+// Data layer + saving of the user's timezone, client-side (RPC). Only the Status page
+// uses this for now, so we keep it local to a composable rather than growing a separate
+// store.
 export function useUserSettings() {
   const timezone = ref('UTC');
   const loadError = ref(false);
@@ -60,8 +60,8 @@ export function useUserSettings() {
   const saveError = ref<string | null>(null);
   const justSaved = ref(false);
 
-  // Wczytanie ustawień — wyłącznie client-side (zgodnie z architekturą; cookie sesji
-  // jedzie z żądaniem same-origin). Błąd nie wywala strony: zostaje domyślne UTC.
+  // Load settings — client-side only (per the architecture; the session cookie rides
+  // along same-origin). An error doesn't break the page: it keeps the default UTC.
   const { pending: loading } = useAsyncData<UserSettings | null>(
     'user-settings',
     async () => {
@@ -80,19 +80,19 @@ export function useUserSettings() {
 
   let savedTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Zapis od razu przy zmianie: optymistycznie aktualizuje UI, wysyła PATCH,
-  // a przy błędzie cofa do poprzedniej wartości. Kontrolka zablokowana przez `saving`,
-  // więc nie polecą dwa żądania naraz.
+  // Save immediately on change: optimistically update the UI, send the PATCH, and roll
+  // back to the previous value on error. The control is disabled while `saving`, so two
+  // requests can't fire at once.
   async function setTimezone(next: string) {
     if (next === timezone.value || saving.value) return;
     const previous = timezone.value;
-    timezone.value = next; // optymistycznie
+    timezone.value = next; // optimistic
     saving.value = true;
     saveError.value = null;
     try {
       const res = await client.api.user.settings.$patch({ json: { timezone: next } });
       if (!res.ok) {
-        timezone.value = previous; // cofnięcie
+        timezone.value = previous; // roll back
         saveError.value = 'Could not save timezone. Please try again.';
         return;
       }
@@ -104,21 +104,21 @@ export function useUserSettings() {
         justSaved.value = false;
       }, 2000);
     } catch {
-      timezone.value = previous; // cofnięcie przy błędzie sieci
+      timezone.value = previous; // roll back on a network error
       saveError.value = 'Could not save timezone. Please try again.';
     } finally {
       saving.value = false;
     }
   }
 
-  // Podpowiedź z przeglądarki — zapis jak przy każdej innej zmianie.
+  // Suggestion from the browser — saved like any other change.
   function detect() {
     const browserTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (browserTz) setTimezone(browserTz);
   }
 
-  // Lista stref w selektorze — z gwarancją, że bieżąca wartość jest na liście
-  // (np. strefa zapisana wcześniej, a nieznana bieżącej przeglądarce).
+  // Timezone list for the selector — guaranteed to include the current value (e.g. a
+  // zone saved earlier that the current browser doesn't know about).
   const timezones = computed(() => {
     const list = supportedTimezones();
     return list.includes(timezone.value) ? list : [timezone.value, ...list];
