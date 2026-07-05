@@ -5,7 +5,7 @@ import {
   recurringQuestCompletions,
   recurringQuestStreaks,
   userSettings,
-} from '@soloquest/db';
+} from '@soloquest/db/schema';
 import type { DrizzleDB } from '../lib/streak';
 import { getUserDate, toDateString, wasRequiredOn } from '../lib/recurrence';
 

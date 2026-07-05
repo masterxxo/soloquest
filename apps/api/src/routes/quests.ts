@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { db, quests } from '@soloquest/db';
+import { db } from '@soloquest/db/client';
+import { quests } from '@soloquest/db/schema';
 import {
   XP_REWARDS,
   compareDifficulty,

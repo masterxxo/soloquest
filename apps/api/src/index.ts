@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { db }  from '@soloquest/db';
+import { db } from '@soloquest/db/client';
 import { auth } from './auth';
 import { sessionMiddleware, type Variables } from './middleware/auth';
 import { questsRouter } from './routes/quests';

@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import { user as userTable } from '@soloquest/db';
+import { user as userTable } from '@soloquest/db/schema';
 import { levelFromTotalXp } from '@soloquest/shared';
 import type { DrizzleDB } from './db';
 

@@ -8,6 +8,7 @@ import {
   timestamp,
   date,
   unique,
+  index,
 } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 import { user } from './auth'
@@ -38,7 +39,9 @@ export const recurringQuests = pgTable('recurring_quests', {
   // Soft-delete flag: deactivated quests stay for history but stop recurring.
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => [
+  index('recurring_quests_user_id_idx').on(table.userId),
+]);
 
 export const recurringQuestCompletions = pgTable(
   'recurring_quest_completions',
@@ -77,7 +80,9 @@ export const recurringQuestStreaks = pgTable('recurring_quest_streaks', {
     .notNull()
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date()),
-});
+}, (table) => [
+  index('recurring_quest_streaks_user_id_idx').on(table.userId),
+]);
 
 export const userSettings = pgTable('user_settings', {
   userId: text('user_id')
@@ -121,6 +126,7 @@ export const userAchievements = pgTable(
       table.achievementId,
       table.recurringQuestId,
     ),
+    index('user_achievements_user_id_idx').on(table.userId),
   ],
 );
 

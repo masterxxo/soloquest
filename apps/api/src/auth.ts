@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { db } from '@soloquest/db';
+import { db } from '@soloquest/db/client';
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg' }),
@@ -9,8 +9,8 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true },
   user: {
     additionalFields: {
-      xp: { type: 'number', defaultValue: 0, input: false },
-      level: { type: 'number', defaultValue: 1, input: false },
+      xp: { type: 'number', defaultValue: 0, input: false, required: true },
+      level: { type: 'number', defaultValue: 1, input: false, required: true },
     },
   },
 })

@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
-import { db, userSettings } from '@soloquest/db';
+import { db } from '@soloquest/db/client';
+import { userSettings } from '@soloquest/db/schema';
 import { updateUserSettingsSchema } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 

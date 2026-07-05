@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { quests } from '@soloquest/db';
+import { quests } from '@soloquest/db/schema';
 import type { DrizzleDB } from './db';
 
 export type Quest = typeof quests.$inferSelect;

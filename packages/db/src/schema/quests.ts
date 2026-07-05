@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, type AnyPgColumn } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, integer, timestamp, index, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 import { user } from './auth'
 import { difficultyEnum, questStatusEnum } from './enums'
@@ -16,7 +16,13 @@ export const quests = pgTable('quests', {
   deadline: timestamp('deadline'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => [
+  // Composite covers both the per-user list (leftmost prefix on user_id) and the
+  // status-filtered list, so no separate user_id index is needed.
+  index('quests_user_id_status_idx').on(table.userId, table.status),
+  // Sub-task lookup by parent quest.
+  index('quests_parent_id_idx').on(table.parentId),
+]);
 
 export const questsRelations = relations(quests, ({ one, many }) => ({
   user: one(user, { fields: [quests.userId], references: [user.id] }),

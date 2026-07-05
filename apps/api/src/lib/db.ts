@@ -1,4 +1,4 @@
-import { db } from '@soloquest/db';
+import { db } from '@soloquest/db/client';
 
 /**
  * A Drizzle handle that is either the top-level client or the transaction handle

@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { achievements, userAchievements, recurringQuestStreaks } from '@soloquest/db';
+import { achievements, userAchievements, recurringQuestStreaks } from '@soloquest/db/schema';
 import type { DrizzleDB } from './db';
 
 // Re-exported for existing importers (e.g. the daily cron) now that the type lives

@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gte } from 'drizzle-orm';
+import { db } from '@soloquest/db/client';
 import {
-  db,
   recurringQuests,
   recurringQuestCompletions,
   recurringQuestStreaks,
   userSettings,
-} from '@soloquest/db';
+} from '@soloquest/db/schema';
 import {
   createRecurringQuestSchema,
   updateRecurringQuestSchema,
