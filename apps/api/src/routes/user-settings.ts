@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
 import { userSettings } from '@soloquest/db/schema';
 import { updateUserSettingsSchema } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
+import { zValidator } from '../lib/validate';
 
 // Mounted at /api/user → these become /api/user/settings.
 export const userSettingsRouter = new Hono<{ Variables: Variables }>()

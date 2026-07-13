@@ -1,11 +1,9 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
 import { quests } from '@soloquest/db/schema';
 import {
   XP_REWARDS,
-  compareDifficulty,
   type Difficulty,
   createQuestSchema,
   updateQuestSchema,
@@ -15,29 +13,17 @@ import {
 import { requireAuth, type Variables } from '../middleware/auth';
 import { grantXp } from '../lib/xp';
 import { findOwnedQuest } from '../lib/quests';
+import { effectiveParentId, rankWarnings } from '../lib/rank';
+import { zValidator } from '../lib/validate';
 
-// Non-blocking rank sanity check: a sub-task shouldn't out-rank its parent quest.
-// Returns human-readable warnings; it never rejects the write.
+// Loads the parent (scoped to the owner) and defers the rule itself to rankWarnings.
 async function buildRankWarnings(
   userId: string,
   difficulty: Difficulty,
-  parentId?: string | null,
+  parentId: string | null | undefined,
 ): Promise<string[]> {
-  const warnings: string[] = [];
-
-  if (parentId) {
-    const [parent] = await db
-      .select()
-      .from(quests)
-      .where(and(eq(quests.id, parentId), eq(quests.userId, userId)));
-    if (parent && compareDifficulty(difficulty, parent.difficulty) > 0) {
-      warnings.push(
-        `Sub-task rank (${difficulty}) exceeds Quest rank (${parent.difficulty})`,
-      );
-    }
-  }
-
-  return warnings;
+  const parent = parentId ? await findOwnedQuest(db, parentId, userId) : null;
+  return rankWarnings(difficulty, parent);
 }
 
 // Chained so Hono RPC can infer the route types end-to-end.
@@ -137,11 +123,13 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         .returning();
       if (!updated) throw new Error('Failed to update quest');
 
-      // Warn against the effective difficulty and any parent set in this request.
+      // Warn against the *effective* quest after this PATCH — both the difficulty and the
+      // parent it ends up with. A PATCH that only raises the difficulty of an existing
+      // sub-task must still warn, so an omitted parentId falls back to the stored one.
       const warnings = await buildRankWarnings(
         userId,
         input.difficulty ?? existing.difficulty,
-        input.parentId,
+        effectiveParentId(input.parentId, existing.parentId),
       );
       return c.json({ quest: updated, warnings });
     },

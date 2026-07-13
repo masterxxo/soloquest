@@ -1,7 +1,7 @@
 // Pure date/recurrence helpers — no DB access, so they stay easy to reason about
 // and unit-test. Timezone handling lives entirely here.
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { DEFAULT_TIMEZONE, MS_PER_DAY } from './constants';
 
 /**
  * Return the user's *current calendar date*, represented as a Date pinned to UTC
@@ -21,9 +21,9 @@ export function getUserDate(now: Date, timezone: string): Date {
       day: '2-digit',
     }).formatToParts(now);
   } catch {
-    // Invalid IANA timezone → fall back to UTC.
+    // Invalid IANA timezone → fall back to the default zone.
     parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'UTC',
+      timeZone: DEFAULT_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

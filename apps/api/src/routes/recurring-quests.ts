@@ -1,12 +1,10 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
 import {
   recurringQuests,
   recurringQuestCompletions,
   recurringQuestStreaks,
-  userSettings,
 } from '@soloquest/db/schema';
 import {
   createRecurringQuestSchema,
@@ -30,20 +28,13 @@ import {
 } from '../lib/recurrence';
 import { checkAndAwardAchievements } from '../lib/streak';
 import { grantXp } from '../lib/xp';
+import { getUserTimezone } from '../lib/user-settings';
+import { findOwnedRecurringQuest } from '../lib/recurring-quests';
+import { zValidator } from '../lib/validate';
 
 // How many weeks back the /stats heatmap shows. Pulled out as a constant so the window
 // can later be bumped to a full year (e.g. 52) in one place.
 const CALENDAR_WEEKS = 18;
-
-// The user's timezone decides "what day is it for them". Falls back to UTC when no
-// settings row exists yet.
-async function getUserTimezone(userId: string): Promise<string> {
-  const [settings] = await db
-    .select({ timezone: userSettings.timezone })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId));
-  return settings?.timezone ?? 'UTC';
-}
 
 // Chained so Hono RPC can infer the route types end-to-end.
 export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
@@ -53,7 +44,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
   // flags for today (in the user's timezone): isDueToday and isCompletedToday.
   .get('/', async (c) => {
     const userId = c.get('user')!.id;
-    const timezone = await getUserTimezone(userId);
+    const timezone = await getUserTimezone(db, userId);
     const today = getUserDate(new Date(), timezone);
     const todayStr = toDateString(today);
 
@@ -130,11 +121,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
         return c.json({ error: 'No fields to update' }, 400);
       }
 
-      const [existing] = await db
-        .select()
-        .from(recurringQuests)
-        .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
-
+      const existing = await findOwnedRecurringQuest(db, id, userId);
       if (!existing) return c.json({ error: 'Recurring quest not found' }, 404);
       if (!existing.isActive) {
         return c.json({ error: 'Only active recurring quests can be edited' }, 409);
@@ -200,35 +187,17 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       const { id } = c.req.valid('param');
       const { completedDate } = c.req.valid('json');
 
-      const [quest] = await db
-        .select()
-        .from(recurringQuests)
-        .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
-
+      const quest = await findOwnedRecurringQuest(db, id, userId);
       if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
       if (!quest.isActive) {
         return c.json({ error: 'Recurring quest is not active' }, 409);
-      }
-
-      // One completion per quest per day.
-      const [already] = await db
-        .select({ id: recurringQuestCompletions.id })
-        .from(recurringQuestCompletions)
-        .where(
-          and(
-            eq(recurringQuestCompletions.recurringQuestId, id),
-            eq(recurringQuestCompletions.completedDate, completedDate),
-          ),
-        );
-      if (already) {
-        return c.json({ error: 'Already completed for this date' }, 409);
       }
 
       const completedDateObj = fromDateString(completedDate);
 
       // Reject future dates and anything before the ritual existed — otherwise a client
       // could farm XP, totalCompletions, streaks and achievements with fabricated dates.
-      const timezone = await getUserTimezone(userId);
+      const timezone = await getUserTimezone(db, userId);
       // Anchor both bounds through getUserDate so today and createdDate share one frame
       // (the user's local calendar day) — no UTC/local mixing on the day boundary.
       const today = toDateString(getUserDate(new Date(), timezone));
@@ -245,11 +214,17 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       }
 
       const result = await db.transaction(async (tx) => {
+        // "One completion per ritual per day" is enforced by the unique constraint on
+        // (recurring_quest_id, completed_date), not by a check before the transaction:
+        // two concurrent requests would both pass such a check and then double-grant XP,
+        // streak and achievements (or blow up on the constraint). Insert first, let the
+        // database arbitrate, and bail out before any side effect if we lost the race.
         const [completion] = await tx
           .insert(recurringQuestCompletions)
           .values({ recurringQuestId: id, userId, completedDate })
+          .onConflictDoNothing()
           .returning();
-        if (!completion) throw new Error('Failed to record completion');
+        if (!completion) return { error: 'already_completed' as const };
 
         // Read the current streak (created at POST; recreated defensively if missing).
         let [streak] = await tx
@@ -312,6 +287,12 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
         };
       });
 
+      // Lost the race (or a plain double-click): the day was already recorded, so no XP,
+      // no streak advance, no achievements — just say so.
+      if ('error' in result) {
+        return c.json({ error: 'Already completed for this date' }, 409);
+      }
+
       return c.json(result);
     },
   )
@@ -322,16 +303,8 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
     const userId = c.get('user')!.id;
     const { id } = c.req.valid('param');
 
-    // Pull the recurrence config too — it feeds the calendar's "due day" logic.
-    const [quest] = await db
-      .select({
-        id: recurringQuests.id,
-        recurrenceType: recurringQuests.recurrenceType,
-        recurrenceValue: recurringQuests.recurrenceValue,
-        createdAt: recurringQuests.createdAt,
-      })
-      .from(recurringQuests)
-      .where(and(eq(recurringQuests.id, id), eq(recurringQuests.userId, userId)));
+    // The full row carries the recurrence config, which feeds the calendar's "due day" logic.
+    const quest = await findOwnedRecurringQuest(db, id, userId);
     if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
 
     const [streak] = await db
@@ -349,7 +322,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
     // Completion calendar (heatmap): day-by-day status in the user's timezone, from the
     // ritual's start (or the last CALENDAR_WEEKS weeks) up to today. "Required day" is
     // computed by the same function (wasRequiredOn) as the cron — a single source of truth.
-    const timezone = await getUserTimezone(userId);
+    const timezone = await getUserTimezone(db, userId);
     const today = getUserDate(new Date(), timezone);
     const questStart = getUserDate(quest.createdAt, timezone);
     const windowStart = calendarWindowStart(today, questStart, CALENDAR_WEEKS);

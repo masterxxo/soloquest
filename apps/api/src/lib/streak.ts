@@ -2,10 +2,6 @@ import { and, eq } from 'drizzle-orm';
 import { achievements, userAchievements, recurringQuestStreaks } from '@soloquest/db/schema';
 import type { DrizzleDB } from './db';
 
-// Re-exported for existing importers (e.g. the daily cron) now that the type lives
-// in a neutral module rather than being coupled to this achievements code.
-export type { DrizzleDB };
-
 export type Achievement = typeof achievements.$inferSelect;
 type Streak = typeof recurringQuestStreaks.$inferSelect;
 

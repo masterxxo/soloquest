@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '@soloquest/db/client';
 import { auth } from './auth';
 import { sessionMiddleware, type Variables } from './middleware/auth';
@@ -9,6 +10,18 @@ import { userSettingsRouter } from './routes/user-settings';
 import { startDailyCron } from './cron/daily-tick';
 
 const app = new Hono<{ Variables: Variables }>().basePath('/api');
+
+// Every error the API emits has the same body: { error: string }. This catches whatever
+// the routes throw instead of handling (a failed insert, a driver error, a bug), which
+// would otherwise leave the client with a bare 500 and no parseable body. Deliberate
+// failures still return their own status via c.json(..., 4xx) and never reach here.
+app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return c.json({ error: err.message }, err.status);
+  }
+  console.error('[api] unhandled error:', err);
+  return c.json({ error: 'Internal server error' }, 500);
+});
 
 // Better Auth owns /api/auth/* — hand every method off to its fetch handler.
 app.on(['GET', 'POST'], '/auth/*', (c) => auth.handler(c.req.raw));
