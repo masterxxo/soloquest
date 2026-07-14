@@ -87,11 +87,15 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         >
           Edit
         </button>
-        <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest. -->
+        <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest.
+             Disabled while its own completion is in flight — a second request would grant
+             the XP twice — with a pulsing outline so the wait reads as "working". -->
         <button
           v-if="isActive && !isSubTask"
           class="min-h-[44px] cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0"
+          :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
           :disabled="completing || deleting"
+          :aria-busy="completing"
           @click="onComplete"
         >
           {{ completing ? '…' : 'Complete' }}

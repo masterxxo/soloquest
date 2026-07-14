@@ -82,11 +82,15 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQue
         class="border border-[#1f5a3a] bg-[rgba(63,191,111,0.08)] px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-[#3fbf6f]"
         >✓ Done today</span
       >
-      <!-- Due and not yet done → live Complete button. -->
+      <!-- Due and not yet done → live Complete button. Disabled while its own completion
+           is in flight (a second request would be a duplicate), with a pulsing outline so
+           the wait reads as "working", not merely as a dimmed button. -->
       <button
         v-else-if="quest.isDueToday"
         class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+        :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
         :disabled="completing || deleting"
+        :aria-busy="completing"
         @click="onComplete"
       >
         {{ completing ? '…' : 'Complete' }}

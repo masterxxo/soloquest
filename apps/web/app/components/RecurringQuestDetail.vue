@@ -115,14 +115,17 @@ const calendar = computed(() => stats.value?.calendar ?? []);
             class="border border-[#1f5a3a] bg-[rgba(63,191,111,0.08)] px-[0.7rem] py-[0.55rem] text-center text-[0.85rem] font-semibold text-[#3fbf6f]"
             >✓ Done today</span
           >
-          <!-- Due and not yet done → live Complete button. -->
+          <!-- Due and not yet done → live Complete button. Shares its in-flight state with
+               the list card behind the modal (both read the same store entry). -->
           <button
             v-else-if="quest.isDueToday"
             class="cursor-pointer border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+            :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
             :disabled="completing || deleting"
+            :aria-busy="completing"
             @click="onComplete"
           >
-            {{ completing ? '…' : 'Complete' }}
+            {{ completing ? 'Completing…' : 'Complete' }}
           </button>
           <!-- Not scheduled for today → disabled, with an explanatory tooltip. -->
           <button

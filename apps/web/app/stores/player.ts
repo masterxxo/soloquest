@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { levelFromTotalXp, xpForLevel } from '@soloquest/shared';
 import { useQuestsStore } from '~/stores/quests';
+import { refreshAuthSession } from '~/composables/useAuthSession';
 import { bucketByDeadline, localDateString } from '~/lib/date';
 
 // Projection of session.user — the session stays the source of truth. hydrate() runs
@@ -65,6 +66,19 @@ export const usePlayerStore = defineStore('player', {
     applyProgress(p: { xp: number; level: number }) {
       this.xp = p.xp;
       this.level = p.level;
+    },
+    // Re-pull xp/level when the client knows its copy may be stale but got no fresh one
+    // in the response — the 409 path: that completion's XP was granted to the account
+    // elsewhere (second tab, another device, a raced request). Refetching the cached
+    // session updates the shared useFetch data the layout watches, which re-runs
+    // hydrate() with the server's values. One refresh path, no XP math on the client.
+    //
+    // Deliberately silent: it can raise the level, but the level-up toast belongs to the
+    // completion that actually earned it, not to the conflict that discovered it.
+    // Relies on Better Auth session hitting the DB on every fetch.
+    // Enabling session.cookieCache would serve stale xp/level here.
+    async refreshFromSession() {
+      await refreshAuthSession();
     },
   },
 });

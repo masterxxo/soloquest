@@ -6,11 +6,14 @@ import {
   type QuestWithWarnings,
   type CompleteResult,
 } from '~/lib/api-client';
+import { readApiError } from '~/lib/api-error';
 import { useQuestsStore } from '~/stores/quests';
+import { useFeedbackStore } from '~/stores/feedback';
 import { useEntityModals } from '~/composables/useEntityModals';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
+const feedback = useFeedbackStore();
 const { activeQuests } = storeToRefs(quests);
 
 // Counts/lists come from the shared store; the layout already loaded them, but calling
@@ -20,6 +23,8 @@ onMounted(() => { quests.load(); });
 // ── Quick-add ─────────────────────────────────────────────────────────────────
 // A title-only capture: posts an E-rank quest (description mirrors the title) so it
 // lands in STANDING ORDERS immediately. The full form is one click away for details.
+// `quickAdding` is a plain local ref (not the store's per-id completion guard): there is
+// exactly one quick-add input, and the quest it creates has no id to key a guard on yet.
 const quickTitle = ref('');
 const quickAdding = ref(false);
 async function quickAdd() {
@@ -30,7 +35,13 @@ async function quickAdd() {
     const res = await client.api.quests.$post({
       json: { title, description: title, difficulty: 'E', deadline: null },
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Say what went wrong and keep the typed title — the quest doesn't exist, so
+      // clearing the input would throw the player's text away for nothing.
+      const { message } = await readApiError(res, 'Could not create quest.');
+      feedback.showNotice([message], 'warning');
+      return;
+    }
     quests.addQuest(await res.json());
     quickTitle.value = '';
   } finally {

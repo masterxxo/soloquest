@@ -71,13 +71,18 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       <!-- Details sidebar -->
       <aside class="flex flex-col gap-4 border border-line bg-[rgba(14,9,30,0.6)] p-4">
         <div class="flex flex-col gap-2">
+          <!-- Shares its in-flight state with the list card behind the modal (both read the
+               same store entry), so the quest can't be completed — and its XP granted —
+               twice from the two surfaces. -->
           <button
             v-if="isActive"
             class="cursor-pointer border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
+            :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
             :disabled="completing || deleting"
+            :aria-busy="completing"
             @click="onComplete"
           >
-            {{ completing ? '…' : 'Complete' }}
+            {{ completing ? 'Completing…' : 'Complete' }}
           </button>
           <button
             v-if="isActive"

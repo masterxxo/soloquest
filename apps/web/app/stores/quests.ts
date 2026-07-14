@@ -18,6 +18,9 @@ import { localDateString } from '~/lib/date';
 //
 // View/modal state (selected quest, form toggles) stays local to the page — only the
 // shared lists and their mutations live here.
+// Which entity an in-flight completion belongs to (one-off quest vs recurring ritual).
+export type CompletableKind = 'quest' | 'recurring';
+
 interface QuestsState {
   activeQuests: Quest[];
   recurringQuests: RecurringQuestWithStreak[];
@@ -26,6 +29,11 @@ interface QuestsState {
   // day-sensitive flags (isCompletedToday / isDueToday, overdue) are only valid for the
   // day they were fetched, so we track this to invalidate the cache across midnight.
   loadedDate: string | null;
+  // Ids with a completion request currently in flight. Kept here rather than in the
+  // component so the list card and the open detail modal — two separate instances of
+  // useQuestActions / useRecurringQuestActions for the same entity — share one guard.
+  completingQuestIds: string[];
+  completingRecurringIds: string[];
 }
 
 export const useQuestsStore = defineStore('quests', {
@@ -34,8 +42,32 @@ export const useQuestsStore = defineStore('quests', {
     recurringQuests: [],
     loaded: false,
     loadedDate: null,
+    completingQuestIds: [],
+    completingRecurringIds: [],
   }),
+  getters: {
+    isCompleting: (state) => (kind: CompletableKind, id: string) =>
+      (kind === 'quest' ? state.completingQuestIds : state.completingRecurringIds).includes(id),
+  },
   actions: {
+    // ── In-flight completions ───────────────────────────────────────────────
+    // Completing is the one mutation that must never run twice for the same entity: a
+    // duplicate one-off complete would double-grant XP, and a duplicate ritual complete
+    // is rejected by the backend with a 409. Claiming the id is synchronous, so it also
+    // closes the gap between the two clicks of a double-click and the DOM patch that
+    // disables the button.
+    beginComplete(kind: CompletableKind, id: string): boolean {
+      const ids = kind === 'quest' ? this.completingQuestIds : this.completingRecurringIds;
+      if (ids.includes(id)) return false;
+      ids.push(id);
+      return true;
+    },
+    endComplete(kind: CompletableKind, id: string) {
+      if (kind === 'quest')
+        this.completingQuestIds = this.completingQuestIds.filter((x) => x !== id);
+      else this.completingRecurringIds = this.completingRecurringIds.filter((x) => x !== id);
+    },
+
     // Fetch both per-user lists. Pages call this on mount; the cache keeps navigation
     // between pages from refetching — EXCEPT once the local calendar day has changed
     // since the last load, since the day-sensitive flags (done/due today, overdue) go
