@@ -130,8 +130,8 @@ export function previousRequiredDate(
 }
 
 /**
- * Can this ritual be completed for `completedDate`? Guards against XP/streak farming:
- * no future days, and nothing before the ritual existed.
+ * Can this recurring quest be completed for `completedDate`? Guards against XP/streak
+ * farming: no future days, and nothing before the quest existed.
  *
  * All three args are local calendar dates in the user's timezone, formatted 'YYYY-MM-DD'.
  * Zero-padded date strings compare lexicographically == chronologically, so this is fully
@@ -146,17 +146,17 @@ export function isCompletableDate(
   return completedDate >= createdDate && completedDate <= today;
 }
 
-/** Status of a single day in a ritual's completion calendar (heatmap). */
-export type RitualCalendarStatus = 'done' | 'missed' | 'not_scheduled';
+/** Status of a single day in a recurring quest's completion calendar (heatmap). */
+export type RecurringCalendarStatus = 'done' | 'missed' | 'not_scheduled';
 
 /** One calendar day: a 'YYYY-MM-DD' date plus its completion status. */
-export interface RitualCalendarDay {
+export interface RecurringCalendarDay {
   date: string;
-  status: RitualCalendarStatus;
+  status: RecurringCalendarStatus;
 }
 
 /**
- * Start of the heatmap window: max(ritual start day, today − weeks·7 + 1).
+ * Start of the heatmap window: max(quest start day, today − weeks·7 + 1).
  * Both dates are UTC midnight of the user's local day (see getUserDate).
  */
 export function calendarWindowStart(today: Date, questStart: Date, weeks: number): Date {
@@ -174,20 +174,20 @@ export function calendarWindowStart(today: Date, questStart: Date, weeks: number
  *   not_scheduled → a non-required day, OR today (still in progress) with no completion.
  *
  * "missed" never applies to today — the day is still running, so a not-yet-completed
- * ritual stays neutral until the day closes. This matches the cron, which only judges
+ * quest stays neutral until the day closes. This matches the cron, which only judges
  * yesterday (a fully closed day), never today.
  */
-export function buildRitualCalendar(
+export function buildRecurringCalendar(
   quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
   windowStart: Date,
   today: Date,
   completedDates: Set<string>,
-): RitualCalendarDay[] {
-  const days: RitualCalendarDay[] = [];
+): RecurringCalendarDay[] {
+  const days: RecurringCalendarDay[] = [];
   for (let t = windowStart.getTime(); t <= today.getTime(); t += MS_PER_DAY) {
     const date = new Date(t);
     const ds = toDateString(date);
-    let status: RitualCalendarStatus;
+    let status: RecurringCalendarStatus;
     if (completedDates.has(ds)) status = 'done';
     else if (date.getTime() < today.getTime() && wasRequiredOn(quest, date)) status = 'missed';
     else status = 'not_scheduled';

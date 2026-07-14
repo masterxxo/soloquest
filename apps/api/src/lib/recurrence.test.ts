@@ -22,7 +22,7 @@ describe('isCompletableDate', () => {
     expect(isCompletableDate('2026-07-04', today, createdDate)).toBe(false);
   });
 
-  it('rejects a date before the ritual existed', () => {
+  it('rejects a date before the quest existed', () => {
     expect(isCompletableDate('2026-05-31', today, createdDate)).toBe(false);
   });
 
@@ -33,8 +33,8 @@ describe('isCompletableDate', () => {
     expect(isCompletableDate('2026-07-04', nyToday, createdDate)).toBe(false);
   });
 
-  it('allows completing today a ritual created late last local evening in a negative offset tz', () => {
-    // Regression: ritual created 2026-07-02 23:30 America/New_York = 2026-07-03 03:30 UTC.
+  it('allows completing today a quest created late last local evening in a negative offset tz', () => {
+    // Regression: quest created 2026-07-02 23:30 America/New_York = 2026-07-03 03:30 UTC.
     // Anchoring createdDate in UTC (the old toUtcMidnight path) yielded 2026-07-03 and wrongly
     // rejected a same-local-day completion. Deriving it through getUserDate keeps it 2026-07-02.
     const tz = 'America/New_York';

@@ -24,7 +24,7 @@ import {
   previousRequiredDate,
   isCompletableDate,
   calendarWindowStart,
-  buildRitualCalendar,
+  buildRecurringCalendar,
 } from '../lib/recurrence';
 import { checkAndAwardAchievements } from '../lib/streak';
 import { grantXp } from '../lib/xp';
@@ -195,7 +195,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
 
       const completedDateObj = fromDateString(completedDate);
 
-      // Reject future dates and anything before the ritual existed — otherwise a client
+      // Reject future dates and anything before the quest existed — otherwise a client
       // could farm XP, totalCompletions, streaks and achievements with fabricated dates.
       const timezone = await getUserTimezone(db, userId);
       // Anchor both bounds through getUserDate so today and createdDate share one frame
@@ -214,7 +214,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       }
 
       const result = await db.transaction(async (tx) => {
-        // "One completion per ritual per day" is enforced by the unique constraint on
+        // "One completion per quest per day" is enforced by the unique constraint on
         // (recurring_quest_id, completed_date), not by a check before the transaction:
         // two concurrent requests would both pass such a check and then double-grant XP,
         // streak and achievements (or blow up on the constraint). Insert first, let the
@@ -320,7 +320,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       .limit(30);
 
     // Completion calendar (heatmap): day-by-day status in the user's timezone, from the
-    // ritual's start (or the last CALENDAR_WEEKS weeks) up to today. "Required day" is
+    // quest's start (or the last CALENDAR_WEEKS weeks) up to today. "Required day" is
     // computed by the same function (wasRequiredOn) as the cron — a single source of truth.
     const timezone = await getUserTimezone(db, userId);
     const today = getUserDate(new Date(), timezone);
@@ -340,7 +340,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       );
     const completedDates = new Set(windowCompletions.map((row) => row.completedDate));
 
-    const calendar = buildRitualCalendar(quest, windowStart, today, completedDates);
+    const calendar = buildRecurringCalendar(quest, windowStart, today, completedDates);
 
     return c.json({
       streak: streak ?? null,

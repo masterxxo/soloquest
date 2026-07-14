@@ -47,6 +47,10 @@ verification that is happening outside the agent.
 - **Report, don't fix.** Something suspicious but out of scope: say so, leave it alone.
 - **Stop when the task is done.** Summarize what changed and what to verify, then end the
   turn. Do not continue into adjacent work "while you're in there".
+- **Keep this file true.** If a task changes the scope, changes an architectural decision,
+  or deliberately removes or freezes something — update CLAUDE.md in the same commit and
+  say so in the report. The file maintains itself as a by-product of the work, not as a
+  separate chore.
 
 Rationale: the feedback loop (running dev server, editor, manual review) lives entirely
 outside the agent. Re-running it inside the agent is pure overhead.
@@ -91,8 +95,11 @@ packages/eslint-config Shared flat config + the language rule
    of truth for both the API (granting) and the web app (progress display). Never duplicate
    it. Note `xpForLevel(n)` is the cost *of* level n, not a cumulative threshold.
 3. **One source of truth for enums.** `packages/shared/src/enums.ts` feeds the Drizzle
-   `pgEnum`s, the Zod `z.enum`s, and the frontend. **Reordering the values of an existing
-   enum means an `ALTER TYPE` — forbidden.** Append only.
+   `pgEnum`s, the Zod `z.enum`s, and the frontend. **Every** enum lives there — difficulty,
+   quest status, recurrence type, achievement type, and anything added later. No enum tuple
+   is declared inline in the Drizzle schema: `pgEnum` only ever *consumes* a tuple imported
+   from `@soloquest/shared/enums`. **Reordering the values of an existing enum means an
+   `ALTER TYPE` — forbidden.** Append only.
 4. **Migrations are file-based and reviewed.** `drizzle-kit generate` → read the SQL →
    apply by hand on production → verify with a query against the database. Never
    `drizzle-kit push`. Never auto-apply.
@@ -146,8 +153,15 @@ All of the following exist, are used, and are meant to stay:
 - **Campaigns are gone from every layer** and stay gone — that scope belongs to the future
   project-management app. Do not reintroduce them. (They survive only in old migration
   files, which are immutable history, not a hint.)
-- **"Rituals" is a UI label only.** The backend, tables, endpoints and wire types remain
-  `recurring`. Do not rename them.
+- **"Rituals" is a UI label only** — and the boundary is exact, in both directions:
+  - **`recurring` everywhere in domain, data and types.** `apps/api`, `packages/db`,
+    `packages/shared`, every wire type crossing into the frontend (e.g.
+    `RecurringCalendarDay`), and any frontend identifier holding those types. No identifier
+    — function, type, variable, file name — says "Ritual".
+  - **"Rituals" only in presentation.** The `/rituals` route and `rituals.vue`, plus
+    user-visible copy: headings, tab labels, buttons, toasts. That copy is deliberate; do
+    not "fix" it to say "recurring".
+  - Components are already named `Recurring*`. Leave them.
 - **No squashing of Drizzle migrations.** The history stands.
 - **Rank auto-derivation from sub-tasks is frozen** on purpose; the rank check only ever
   produces a non-blocking warning.

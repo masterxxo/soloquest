@@ -5,7 +5,7 @@ import { DEFAULT_TIMEZONE } from './constants';
 
 /**
  * The user's timezone decides "what day is it for them". Falls back to DEFAULT_TIMEZONE
- * when no settings row exists yet. Shared by the ritual routes and the daily cron so both
+ * when no settings row exists yet. Shared by the recurring-quest routes and the daily cron so both
  * derive the user's calendar day from exactly one rule.
  */
 export async function getUserTimezone(

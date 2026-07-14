@@ -15,6 +15,10 @@ export const QUEST_STATUS = ['active', 'completed', 'failed'] as const;
 // How a recurring quest repeats (see recurring.ts / db schema for per-value semantics).
 export const RECURRENCE_TYPE = ['daily', 'every_x_days', 'weekdays'] as const;
 
+// Achievement category: streak-based (consecutive days) or total-based (lifetime completions).
+export const ACHIEVEMENT_TYPE = ['streak', 'total'] as const;
+
 export type Difficulty = (typeof DIFFICULTY_ORDER)[number];
 export type QuestStatus = (typeof QUEST_STATUS)[number];
 export type RecurrenceType = (typeof RECURRENCE_TYPE)[number];
+export type AchievementType = (typeof ACHIEVEMENT_TYPE)[number];

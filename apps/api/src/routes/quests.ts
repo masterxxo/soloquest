@@ -54,7 +54,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   // Lifetime quest counters for the current user, read from the completion log rather
   // than from the quests table — deleting a completed quest must not lower the count.
   // Shaped as an object so further counters can be added as fields without a new route.
-  // (Rituals keep their own log and are deliberately not counted here.)
+  // (Recurring quests keep their own log and are deliberately not counted here.)
   .get('/stats', async (c) => {
     const userId = c.get('user')!.id;
     const totalCompleted = await countQuestCompletions(db, userId);

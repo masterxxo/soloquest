@@ -5,7 +5,7 @@ import type { DrizzleDB } from './db';
 export type RecurringQuest = typeof recurringQuests.$inferSelect;
 
 /**
- * Twin of findOwnedQuest for rituals: fetch a recurring quest only when it belongs to
+ * Twin of findOwnedQuest for recurring quests: fetch a recurring quest only when it belongs to
  * `userId`; otherwise null. Keeps the "scope every read to the owner" rule in one place.
  */
 export async function findOwnedRecurringQuest(

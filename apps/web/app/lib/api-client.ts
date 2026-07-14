@@ -62,7 +62,7 @@ export type RecurringQuestStats = InferResponseType<
 >;
 
 // One calendar cell: { date: 'YYYY-MM-DD', status: 'done' | 'missed' | 'not_scheduled' }.
-export type RitualCalendarDay = RecurringQuestStats['calendar'][number];
+export type RecurringCalendarDay = RecurringQuestStats['calendar'][number];
 
 // GET /api/user/settings → the user's settings row (currently just timezone + stamps).
 export type UserSettings = InferResponseType<typeof client.api.user.settings.$get, 200>;

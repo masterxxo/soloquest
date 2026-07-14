@@ -16,7 +16,7 @@ import { selectStreaksToReset } from '../lib/streak-reset';
  * *yesterday* but went uncompleted and reset their (running) streak. Today is still in
  * progress, so we only ever judge the day that has fully closed.
  *
- * Three queries + at most one write, regardless of how many rituals the user has: the
+ * Three queries + at most one write, regardless of how many quests the user has: the
  * completions and streaks are fetched in bulk and joined in memory (see
  * selectStreaksToReset), and the resets go out as a single UPDATE.
  */
@@ -26,20 +26,21 @@ async function runUserTick(db: DrizzleDB, userId: string, now: Date): Promise<vo
   const yesterday = new Date(today.getTime() - MS_PER_DAY);
   const yesterdayStr = toDateString(yesterday);
 
-  const rituals = await db
+  // Local rows, not the `recurringQuests` table import above.
+  const quests = await db
     .select()
     .from(recurringQuests)
     .where(and(eq(recurringQuests.userId, userId), eq(recurringQuests.isActive, true)));
-  if (rituals.length === 0) return;
+  if (quests.length === 0) return;
 
-  const ritualIds = rituals.map((ritual) => ritual.id);
+  const questIds = quests.map((quest) => quest.id);
 
   const completions = await db
     .select({ recurringQuestId: recurringQuestCompletions.recurringQuestId })
     .from(recurringQuestCompletions)
     .where(
       and(
-        inArray(recurringQuestCompletions.recurringQuestId, ritualIds),
+        inArray(recurringQuestCompletions.recurringQuestId, questIds),
         eq(recurringQuestCompletions.completedDate, yesterdayStr),
       ),
     );
@@ -50,11 +51,11 @@ async function runUserTick(db: DrizzleDB, userId: string, now: Date): Promise<vo
       currentStreak: recurringQuestStreaks.currentStreak,
     })
     .from(recurringQuestStreaks)
-    .where(inArray(recurringQuestStreaks.recurringQuestId, ritualIds));
+    .where(inArray(recurringQuestStreaks.recurringQuestId, questIds));
 
   const toReset = selectStreaksToReset({
-    rituals,
-    completedRitualIds: new Set(completions.map((row) => row.recurringQuestId)),
+    recurringQuests: quests,
+    completedRecurringQuestIds: new Set(completions.map((row) => row.recurringQuestId)),
     currentStreaks: new Map(streaks.map((row) => [row.recurringQuestId, row.currentStreak])),
     day: yesterday,
   });

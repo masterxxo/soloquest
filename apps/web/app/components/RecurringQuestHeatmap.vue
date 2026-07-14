@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { RitualCalendarDay } from '~/lib/api-client';
+import type { RecurringCalendarDay } from '~/lib/api-client';
 
 // Completion calendar (GitHub-style heatmap). The backend is the source of truth for each
 // day's status (the `calendar` field from /stats) — here we only lay days out into weekly
 // columns and paint them.
-const props = defineProps<{ calendar: RitualCalendarDay[] }>();
+const props = defineProps<{ calendar: RecurringCalendarDay[] }>();
 
-type Status = RitualCalendarDay['status'];
+type Status = RecurringCalendarDay['status'];
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

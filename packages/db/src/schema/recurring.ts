@@ -14,8 +14,8 @@ import { relations } from "drizzle-orm"
 import { user } from './auth'
 // Reuse the shared difficulty enum (declared in enums.ts) — do not redeclare it.
 import { difficultyEnum } from './enums'
-// Canonical recurrence tuple lives in @soloquest/shared (lightweight /enums entry).
-import { RECURRENCE_TYPE } from "@soloquest/shared/enums"
+// Canonical recurrence / achievement tuples live in @soloquest/shared (lightweight /enums entry).
+import { ACHIEVEMENT_TYPE, RECURRENCE_TYPE } from "@soloquest/shared/enums"
 
 // How a recurring quest repeats.
 // - daily        → every day (recurrenceValue is null)
@@ -24,7 +24,7 @@ import { RECURRENCE_TYPE } from "@soloquest/shared/enums"
 export const recurrenceTypeEnum = pgEnum('recurrence_type', RECURRENCE_TYPE);
 
 // Achievement category: streak-based (consecutive days) or total-based (lifetime completions).
-export const achievementTypeEnum = pgEnum('achievement_type', ['streak', 'total']);
+export const achievementTypeEnum = pgEnum('achievement_type', ACHIEVEMENT_TYPE);
 
 export const recurringQuests = pgTable('recurring_quests', {
   id: uuid('id').primaryKey().defaultRandom(),

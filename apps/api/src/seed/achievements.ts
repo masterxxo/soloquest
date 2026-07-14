@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url';
 import { db } from '@soloquest/db/client';
 import { achievements } from '@soloquest/db/schema';
+import type { AchievementType } from '@soloquest/shared/enums';
 import type { DrizzleDB } from '../lib/db';
 
 // Streak milestones: awarded for N consecutive completed days on a single quest.
@@ -27,8 +28,8 @@ const TOTAL_MILESTONES = [
 
 // xpBonus: 0 for now — bonuses are not wired up yet (kept explicit for future tuning).
 const ALL_ACHIEVEMENTS = [
-  ...STREAK_MILESTONES.map((m) => ({ ...m, type: 'streak' as const, xpBonus: 0 })),
-  ...TOTAL_MILESTONES.map((m) => ({ ...m, type: 'total' as const, xpBonus: 0 })),
+  ...STREAK_MILESTONES.map((m) => ({ ...m, type: 'streak' as AchievementType, xpBonus: 0 })),
+  ...TOTAL_MILESTONES.map((m) => ({ ...m, type: 'total' as AchievementType, xpBonus: 0 })),
 ];
 
 // Idempotent: insert only achievements whose title isn't already present.
