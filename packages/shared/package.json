@@ -5,7 +5,8 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "type": "module",
   "exports": {
@@ -16,6 +17,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@soloquest/eslint-config": "workspace:*",
+    "eslint": "^9.39.1",
     "vitest": "^3.2.4"
   }
 }

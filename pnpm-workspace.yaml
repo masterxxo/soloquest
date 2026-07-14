@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true
+  # Native module resolver behind eslint-plugin-import-x, pulled in by @nuxt/eslint.
+  unrs-resolver: true

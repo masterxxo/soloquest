@@ -5,7 +5,7 @@
     "dev": { "cache": false, "persistent": true },
     "typecheck": { "dependsOn": ["^typecheck"] },
     "test": { "dependsOn": ["^build"] },
-    "lint": {},
+    "lint": { "outputs": [] },
     "db:generate": { "cache": false },
     "db:migrate": { "cache": false }
   }

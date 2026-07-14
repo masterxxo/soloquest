@@ -5,6 +5,33 @@ on:
     branches: [master]
 
 jobs:
+  # ESLint over every package. Its own job, running in parallel with typecheck, so a lint
+  # failure is attributed unambiguously — and it gates the deploy below.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # Read the version instead of hardcoding it: `engines.node` in the root
+          # package.json is the source of truth (and mirrors mise.toml).
+          node-version-file: package.json
+          # Caches the pnpm store, so install is a restore rather than a cold download.
+          cache: pnpm
+
+      # postinstall runs `nuxt prepare`, which generates `.nuxt/eslint.config.mjs` — the
+      # config apps/web/eslint.config.mjs imports. Lint would fail to resolve it otherwise.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
   # Typecheck the whole workspace (api/db/shared/web) first — its own job so a failure
   # is attributed unambiguously, before any tests run.
   typecheck:
@@ -18,7 +45,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: package.json
           cache: pnpm
 
       # postinstall runs `nuxt prepare`, which generates the .nuxt types that
@@ -42,7 +69,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: package.json
           cache: pnpm
 
       - name: Install dependencies
@@ -52,7 +79,7 @@ jobs:
         run: pnpm test
 
   deploy:
-    needs: [typecheck, test]
+    needs: [lint, typecheck, test]
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Coolify deploy — web

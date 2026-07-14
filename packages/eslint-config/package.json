@@ -1,0 +1,22 @@
+{
+  "name": "@soloquest/eslint-config",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.1",
+    "typescript-eslint": "^8.64.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.1"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

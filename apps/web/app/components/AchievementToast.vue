@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Achievement } from '~/lib/api-client';
+import type { Achievement } from '~/lib/api-client';
 
 // "System"-style achievement feedback. Shown while `achievements` is a non-empty list;
 // the parent owns the auto-hide timer, and the layout's toast container owns the position

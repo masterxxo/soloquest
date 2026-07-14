@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import {
-  type RecurringQuest,
-  type RecurringQuestWithStreak,
-  type RecurringCompleteResult,
-  type Achievement,
+import type {
+  RecurringQuest,
+  RecurringQuestWithStreak,
+  RecurringCompleteResult,
+  Achievement,
 } from '~/lib/api-client';
 import { rankColor } from '~/lib/ranks';
 import { recurrenceLabel } from '~/lib/recurrence';

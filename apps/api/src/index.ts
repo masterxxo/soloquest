@@ -34,8 +34,9 @@ app.get('/health', async (c) => {
   return c.json({ ok: true });
 });
 
-// Mount via chaining so AppType carries the route types for Hono RPC.
-const routes = app
+// Mount via chaining so AppType carries the route types for Hono RPC. Exported because the
+// chained value is the only thing carrying those types - AppType below is derived from it.
+export const routes = app
   .route('/quests', questsRouter)
   .route('/recurring-quests', recurringQuestsRouter)
   .route('/user', userSettingsRouter);

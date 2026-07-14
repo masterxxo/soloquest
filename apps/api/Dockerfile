@@ -4,7 +4,7 @@
 # Runtime env (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, PORT) is injected by
 # Coolify at run time — never baked in, never passed as ARG.
 
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /app

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Quest, type CompleteResult } from '~/lib/api-client';
+import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
 import { rankColor } from '~/lib/ranks';
 import { formatDate } from '~/lib/date';

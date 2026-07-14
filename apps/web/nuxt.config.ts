@@ -8,7 +8,7 @@ export default defineNuxtConfig({
     pageTransition: { name: 'page-flip', mode: 'out-in' },
   },
   css: ['~/assets/css/main.css'],
-  modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss'],
+  modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss', '@nuxt/eslint'],
   runtimeConfig: { public: { apiBase: 'http://localhost:3001'}},
   nitro: {
     // h3 strips the '/api' mount prefix before forwarding, so target must re-add it

@@ -4,7 +4,7 @@
 # Routing web <-> api (same host, /api -> api) is handled by Coolify/Traefik, NOT here.
 # Runtime env (PORT, and NUXT_PUBLIC_API_BASE for SSR — see notes) is injected by Coolify.
 
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /app

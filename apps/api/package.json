@@ -10,11 +10,14 @@
     "start": "tsx src/index.ts",
     "db:seed-achievements": "tsx --env-file=../../.env src/seed/achievements.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "type": "module",
   "devDependencies": {
+    "@soloquest/eslint-config": "workspace:*",
     "@types/node": "^25.9.3",
+    "eslint": "^9.39.1",
     "tsx": "^4.22.4",
     "vitest": "^3.2.4"
   },

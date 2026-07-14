@@ -1,4 +1,4 @@
-import { authClient } from '~/lib/auth-client';
+import type { authClient } from '~/lib/auth-client';
 
 // user carries typed xp/level via inferAdditionalFields<Auth>().
 export type SessionData = typeof authClient.$Infer.Session;
