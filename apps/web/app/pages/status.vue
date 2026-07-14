@@ -4,12 +4,28 @@ import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
 import { useSignOut } from '~/composables/useSignOut';
 import { useUserSettings } from '~/composables/useUserSettings';
+import { client } from '~/lib/api-client';
 
 const player = usePlayerStore();
 const quests = useQuestsStore();
 const { activeQuests } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
+
+// Lifetime completions, counted by the backend over the quest_completions event log —
+// so deleting a completed quest doesn't lower it. Client-side (RPC), like every other
+// authenticated call. A failed fetch leaves the tile at a placeholder instead of
+// breaking the page: the counter is decoration, not the reason to be here.
+const { data: questStats } = useAsyncData(
+  'quest-stats',
+  async () => {
+    const res = await client.api.quests.stats.$get();
+    return res.ok ? await res.json() : null;
+  },
+  { server: false, default: () => null },
+);
+
+const completedCount = computed(() => questStats.value?.totalCompleted ?? null);
 
 // Account settings — timezone picker. Status is the account hub, so it lives here.
 const settings = useUserSettings();
@@ -60,10 +76,13 @@ const { loggingOut, onSignOut } = useSignOut();
         <XpBar :percent="player.xpPct" />
       </div>
 
-      <div class="grid grid-cols-3 gap-3">
+      <!-- Four tiles: 2×2 rather than a single row — the column can shrink to 220px, where
+           four abreast would crush the labels. -->
+      <div class="grid grid-cols-2 gap-3">
         <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-ink">{{ activeCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Active quests</span></div>
         <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-ink">{{ player.todayCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Due today</span></div>
         <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-danger-line bg-danger-bg/70 p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-danger">{{ player.overdueCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Overdue</span></div>
+        <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-accent-soft">{{ completedCount ?? '—' }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Completed</span></div>
       </div>
 
       <section>

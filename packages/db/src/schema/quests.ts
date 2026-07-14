@@ -24,6 +24,27 @@ export const quests = pgTable('quests', {
   index('quests_parent_id_idx').on(table.parentId),
 ]);
 
+// Append-only log of completion events, one row per completed quest. Deliberately not a
+// counter: title, difficulty and xpAwarded are snapshotted at completion time so a row
+// still describes the achievement after the quest it came from is edited or deleted —
+// which is what the future Chronicles view reads.
+export const questCompletions = pgTable('quest_completions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  // Nullable + SET NULL on purpose (never cascade): deleting the quest must not erase
+  // the fact that it was completed. The link is a convenience, not the source of truth.
+  questId: uuid('quest_id').references((): AnyPgColumn => quests.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  difficulty: difficultyEnum('difficulty').notNull(),
+  xpAwarded: integer('xp_awarded').notNull(),
+  completedAt: timestamp('completed_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+  index('quest_completions_user_id_idx').on(table.userId),
+  // Chronicles: a user's completions in reverse-chronological order.
+  index('quest_completions_user_id_completed_at_idx').on(table.userId, table.completedAt),
+]);
+
 export const questsRelations = relations(quests, ({ one, many }) => ({
   user: one(user, { fields: [quests.userId], references: [user.id] }),
   // self-reference: belongsTo parent quest (nullable) + hasMany sub-tasks
@@ -33,4 +54,11 @@ export const questsRelations = relations(quests, ({ one, many }) => ({
     relationName: 'questSubTasks',
   }),
   subTasks: many(quests, { relationName: 'questSubTasks' }),
+  completions: many(questCompletions),
+}));
+
+export const questCompletionsRelations = relations(questCompletions, ({ one }) => ({
+  user: one(user, { fields: [questCompletions.userId], references: [user.id] }),
+  // Nullable: the quest may be long gone — the snapshot columns still hold.
+  quest: one(quests, { fields: [questCompletions.questId], references: [quests.id] }),
 }));

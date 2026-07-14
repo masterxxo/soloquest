@@ -50,6 +50,13 @@
       "when": 1783249995691,
       "tag": "0006_living_viper",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783978964219,
+      "tag": "0007_daffy_zarda",
+      "breakpoints": true
     }
   ]
 }

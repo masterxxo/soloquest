@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
-import { quests } from '@soloquest/db/schema';
+import { questCompletions, quests } from '@soloquest/db/schema';
 import {
   XP_REWARDS,
   type Difficulty,
@@ -13,6 +13,7 @@ import {
 import { requireAuth, type Variables } from '../middleware/auth';
 import { grantXp } from '../lib/xp';
 import { findOwnedQuest } from '../lib/quests';
+import { buildQuestCompletion, countQuestCompletions } from '../lib/quest-completions';
 import { effectiveParentId, rankWarnings } from '../lib/rank';
 import { zValidator } from '../lib/validate';
 
@@ -48,6 +49,16 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
       ...(include === 'subTasks' ? { with: { subTasks: true } } : {}),
     });
     return c.json(rows);
+  })
+
+  // Lifetime quest counters for the current user, read from the completion log rather
+  // than from the quests table — deleting a completed quest must not lower the count.
+  // Shaped as an object so further counters can be added as fields without a new route.
+  // (Rituals keep their own log and are deliberately not counted here.)
+  .get('/stats', async (c) => {
+    const userId = c.get('user')!.id;
+    const totalCompleted = await countQuestCompletions(db, userId);
+    return c.json({ totalCompleted });
   })
 
   // Create a quest. xpReward is derived server-side from difficulty; status defaults
@@ -158,15 +169,25 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
       if (!quest) return { error: 'not_found' as const };
       if (quest.status === 'completed') return { error: 'already_completed' as const };
 
+      // One timestamp for both writes, so the quest and its completion event agree.
+      const completedAt = new Date();
+
       const [updatedQuest] = await tx
         .update(quests)
-        .set({ status: 'completed', completedAt: new Date() })
+        .set({ status: 'completed', completedAt })
         .where(eq(quests.id, id))
         .returning();
       if (!updatedQuest) throw new Error('Failed to complete quest');
 
       // Server-authoritative XP: atomic increment + derived level, inside this tx.
       const player = await grantXp(tx, sessionUser.id, quest.xpReward);
+
+      // Append the completion event in the same transaction: status, XP and the log
+      // move together or not at all — a granted-but-unlogged completion would silently
+      // undercount the player's history forever.
+      await tx
+        .insert(questCompletions)
+        .values(buildQuestCompletion(quest, quest.xpReward, completedAt));
 
       return {
         quest: updatedQuest,
