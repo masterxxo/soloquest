@@ -1,4 +1,6 @@
 <script lang="ts">
+import { useModalStackStore } from '~/stores/modalStack';
+
 // Module-scoped so stacked panels (e.g. a detail modal with an edit modal on top)
 // ref-count the body scroll lock together — it's only released once the last panel closes.
 let lockCount = 0;
@@ -25,12 +27,21 @@ const emit = defineEmits<{ close: [] }>();
 // on close we play the leave animation first and only emit `close` afterwards, so
 // the parent's unmount doesn't cut it off (and the slot content stays put meanwhile).
 const shown = ref(false);
+
+// Every modal renders through this wrapper, so registering here (once) puts every open
+// modal on the global stack automatically. Tied to mount/unmount so it unregisters on any
+// close route — backdrop, ✕, Escape, programmatic close, or unmount on page navigation.
+const modalStack = useModalStackStore();
+let modalId: number | null = null;
+
 onMounted(() => {
   shown.value = true; // false → true triggers the enter (grow) transition
   lockBodyScroll();
+  modalId = modalStack.registerModal(requestClose);
 });
 onBeforeUnmount(() => {
   unlockBodyScroll();
+  if (modalId !== null) modalStack.unregisterModal(modalId);
 });
 function requestClose() {
   shown.value = false; // triggers the leave (shrink) transition
@@ -95,6 +106,9 @@ const originStyle = computed(() => {
         <div
           class="panel relative flex max-h-[88vh] w-full max-w-[var(--sq-max-width,540px)] flex-col overflow-visible border border-line bg-[rgba(8,5,20,0.97)] p-9 shadow-[0_0_40px_rgba(124,92,232,0.25)]"
           :style="originStyle"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="title"
         >
           <SmokeCanvas :density="1.7" :speed="0.7" />
           <span class="absolute left-2 top-2 h-4 w-4 border-2 border-b-0 border-r-0 border-[#6a50c8]" />

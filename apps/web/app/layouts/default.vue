@@ -4,6 +4,8 @@ import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
 import { useSignOut } from '~/composables/useSignOut';
+import { useModalStackStore } from '~/stores/modalStack';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 
 const route = useRoute();
 const player = usePlayerStore();
@@ -33,6 +35,22 @@ const isActive = (to: string) =>
 
 // Sign out lives in the desktop rail; on mobile (rail hidden) it moves to the Status page.
 const { loggingOut, onSignOut } = useSignOut();
+
+// Global Escape → close the top-most modal. Registered in the persistent layout so it works
+// on every page; it reads the global modal stack, pops one entry per press (nested modals
+// close one at a time), and does nothing when nothing is open. allowInInput so Escape still
+// closes a modal while a form field inside it holds focus.
+const modalStack = useModalStackStore();
+useKeyboardShortcuts([
+  {
+    key: 'Escape',
+    description: 'Close the current modal',
+    allowInInput: true,
+    handler: (event) => {
+      if (modalStack.closeTop()) event.preventDefault();
+    },
+  },
+]);
 
 // ── Pulsing edge of light around the book frame ────────────────────────────────
 // Two light sources travel the perimeter at different speeds, in opposite directions,

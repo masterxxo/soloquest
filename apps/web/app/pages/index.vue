@@ -10,6 +10,7 @@ import { readApiError } from '~/lib/api-error';
 import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
 import { useEntityModals } from '~/composables/useEntityModals';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
@@ -95,6 +96,23 @@ function onDetailDeleted(id: string) {
   closeDetail();
 }
 
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────────
+// `q` opens the New Quest modal through the same path the "+ New Quest" button uses —
+// no second open route. Suppressed while any of this page's three quest modals is open so
+// it can't stack a second modal on top. (There is no global "any modal open" state yet;
+// this guard is scoped to this page's modals — see the report.)
+useKeyboardShortcuts([
+  {
+    key: 'q',
+    description: 'New quest',
+    handler: (event) => {
+      if (showCreate.value || selectedQuest.value != null || editingQuest.value != null) return;
+      event.preventDefault();
+      openCreate();
+    },
+  },
+]);
+
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
   key: string; // "overdue" | "YYYY-MM-DD" | "standing"
@@ -160,7 +178,7 @@ const questGroups = computed<QuestGroup[]>(() => {
           type="button"
           class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
           @click="openCreate"
-        >+ New Quest</button>
+        >+ New Quest <span class="ml-1 text-[0.7rem] font-normal text-ink-dim">(q)</span></button>
       </form>
     </header>
 
