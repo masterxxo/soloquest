@@ -138,6 +138,13 @@ All of the following exist, are used, and are meant to stay:
 - Email + password auth; the Better Auth built-in **`name`** is the player's display name.
   There is no `username` field — do not add one.
 - Quest CRUD with difficulty (E–S), deadlines, and sub-tasks (self-referencing `parentId`).
+- A rank filter on the quest list (`useRankFilter` + `QuestFilterBar`), entirely
+  client-side over the already-loaded array — it narrows the deadline grouping, it never
+  reaches the API. It is **additive**: the
+  chips start unlit and each lit rank *adds* its quests, so an empty selection means "no
+  filter" (the whole board), never "hide everything". The selection lives in the URL
+  (no param = nothing lit; `?rank=D,A` = only those), written with `router.replace`, so a
+  refresh keeps it and a fresh `/` from the nav resets it.
 - Recurring quests — surfaced in the UI as **"Rituals"** — with streaks and a completion
   calendar.
 - `quest_completions`: an append-only event log of completions, kept independently of the
@@ -162,6 +169,11 @@ All of the following exist, are used, and are meant to stay:
     user-visible copy: headings, tab labels, buttons, toasts. That copy is deliberate; do
     not "fix" it to say "recurring".
   - Components are already named `Recurring*`. Leave them.
+- **The quest list is top-level only, on purpose** — `index.vue` groups only
+  `parentId == null` quests and `QuestCard` renders sub-tasks nested under their parent.
+  The list GET *does* return sub-tasks as flat rows (it passes `include=subTasks`, not
+  `parentId=null`) and the page drops them. So a "top-level only" filter or toggle is a
+  no-op by construction — it was specced once and deliberately not built. Do not add one.
 - **No squashing of Drizzle migrations.** The history stands.
 - **Rank auto-derivation from sub-tasks is frozen** on purpose; the rank check only ever
   produces a non-blocking warning.

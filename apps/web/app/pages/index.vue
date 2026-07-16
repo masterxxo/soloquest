@@ -11,6 +11,7 @@ import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
 import { useEntityModals } from '~/composables/useEntityModals';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useRankFilter } from '~/composables/useRankFilter';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
@@ -113,6 +114,12 @@ useKeyboardShortcuts([
   },
 ]);
 
+// ── Rank filter ─────────────────────────────────────────────────────────────────
+// The state and its URL encoding live in useRankFilter; the chips live in QuestFilterBar
+// (which reads the same composable). The page keeps only what is genuinely its own: the
+// list to narrow, and clearing from its own empty state.
+const { filterByRank, clearFilter } = useRankFilter();
+
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
   key: string; // "overdue" | "YYYY-MM-DD" | "standing"
@@ -121,10 +128,17 @@ type QuestGroup = {
   quests: Quest[];
 };
 
+// Only top-level quests; sub-tasks render nested inside their parent's QuestCard.
+// This is also the denominator of "Showing X of Y" — Y counts what the list would show
+// unfiltered, not every row in the store.
+const baseQuests = computed(() => (activeQuests.value ?? []).filter((q) => q.parentId == null));
+
+const visibleQuests = computed(() => filterByRank(baseQuests.value));
+
 const questGroups = computed<QuestGroup[]>(() => {
-  // Only top-level quests; sub-tasks render nested inside their parent's QuestCard.
-  const list = (activeQuests.value ?? []).filter((q) => q.parentId == null);
-  const { overdue, dated, standing } = bucketByDeadline(list);
+  // Grouping runs on the filtered list, so a group whose every quest was filtered out
+  // never gets built — no bare "OVERDUE" heading with nothing under it.
+  const { overdue, dated, standing } = bucketByDeadline(visibleQuests.value);
   const todayKey = localDateString();
 
   const groups: QuestGroup[] = [];
@@ -183,6 +197,14 @@ const questGroups = computed<QuestGroup[]>(() => {
     </header>
 
     <div class="flex flex-col gap-5">
+      <!-- Hidden when there is nothing to filter, so an empty board stays an empty board
+           rather than a set of controls over nothing. -->
+      <QuestFilterBar
+        v-if="baseQuests.length"
+        :shown="visibleQuests.length"
+        :total="baseQuests.length"
+      />
+
       <section v-for="group in questGroups" :key="group.key" class="flex flex-col gap-2">
         <div
           class="border-b pb-[0.4rem] text-[0.7rem] uppercase tracking-[0.18em]"
@@ -203,7 +225,19 @@ const questGroups = computed<QuestGroup[]>(() => {
           />
         </div>
       </section>
-      <p v-if="!questGroups.length" class="m-0 text-[0.85rem] text-line-soft">No active quests. Add your first above.</p>
+      <p v-if="!baseQuests.length" class="m-0 text-[0.85rem] text-line-soft">No active quests. Add your first above.</p>
+      <!-- There are quests, but every one of them is of a rank the player hasn't lit —
+           say so and offer the way out. -->
+      <p v-else-if="!questGroups.length" class="m-0 flex flex-wrap items-center gap-2 text-[0.85rem] text-line-soft">
+        Nothing matches these filters
+        <button
+          type="button"
+          class="cursor-pointer border-0 bg-transparent p-0 text-[0.85rem] font-semibold text-accent-light font-[inherit] hover:underline"
+          @click="clearFilter"
+        >
+          Clear
+        </button>
+      </p>
     </div>
 
     <!-- New-quest form modal. -->
