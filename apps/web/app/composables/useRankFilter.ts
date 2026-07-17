@@ -21,6 +21,12 @@ import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 //   (no param)   nothing lit — every quest shows
 //   ?rank=D      only D
 //   ?rank=D,A    D and A, in DIFFICULTY_ORDER order
+//
+// It also owns the list's second filter dimension, `?top=1` ("Hide sub-tasks"), which is a
+// different kind of narrowing: it removes no quest from the list, it switches off the
+// nested sub-task rendering inside each QuestCard. The two live together because "is any
+// filter on" and "Clear" span both — splitting them would mean every caller reassembling
+// those two answers by hand.
 export function useRankFilter() {
   const route = useRoute();
   const router = useRouter();
@@ -37,28 +43,51 @@ export function useRankFilter() {
   const selectedRankSet = computed(() => new Set<string>(selectedRanks.value));
   const isRankSelected = (rank: Difficulty) => selectedRankSet.value.has(rank);
 
-  // "Filtered" = at least one chip lit. All six lit still counts: it shows the same quests
-  // as the default, but it is a state the player built and can Clear back out of.
-  const isFiltered = computed(() => selectedRanks.value.length > 0);
+  // Only `?top=1` hides sub-tasks; absent, junk, or `top=0` all mean "show them". Same
+  // rule as the ranks — an URL the player can't have meant must degrade to showing more,
+  // never to hiding things they'd then have to hunt for.
+  const hideSubTasks = computed(() => {
+    const raw = route.query.top;
+    return (Array.isArray(raw) ? raw[0] : raw) === '1';
+  });
 
-  function writeRanks(next: Difficulty[]) {
+  // At least one chip lit. All six lit still counts: it shows the same quests as the
+  // default, but it is a state the player built and can Clear back out of. This is what
+  // gates the "Showing X of Y" readout — the ranks are the only dimension that moves those
+  // two numbers.
+  const isRankFiltered = computed(() => selectedRanks.value.length > 0);
+
+  // Any dimension on — what "Clear" hangs off. Broader than isRankFiltered on purpose:
+  // hiding sub-tasks is a state worth offering a way out of, even though it narrows no count.
+  const isFiltered = computed(() => isRankFiltered.value || hideSubTasks.value);
+
+  // Both dimensions write through here, always from a full picture of the next state, so
+  // one can never clobber the other and clearing both stays a single navigation rather than
+  // two replace() calls racing over the same query object.
+  function writeFilters(next: { ranks: Difficulty[]; hideSubTasks: boolean }) {
     const query = { ...route.query };
-    if (!next.length) delete query.rank; // default → clean URL
-    else query.rank = next.join(',');
+    if (!next.ranks.length) delete query.rank; // default → clean URL
+    else query.rank = next.ranks.join(',');
+    if (!next.hideSubTasks) delete query.top;
+    else query.top = '1';
     // replace(), not push(): toggling a chip adjusts the current view, it isn't a place
     // worth walking Back through one chip at a time.
     router.replace({ query });
   }
 
   function toggleRank(rank: Difficulty) {
-    const next = isRankSelected(rank)
+    const ranks = isRankSelected(rank)
       ? selectedRanks.value.filter((r) => r !== rank)
       : DIFFICULTY_ORDER.filter((r) => r === rank || isRankSelected(r)); // keep canonical order
-    writeRanks(next);
+    writeFilters({ ranks, hideSubTasks: hideSubTasks.value });
+  }
+
+  function toggleSubTasks() {
+    writeFilters({ ranks: selectedRanks.value, hideSubTasks: !hideSubTasks.value });
   }
 
   function clearFilter() {
-    writeRanks([]);
+    writeFilters({ ranks: [], hideSubTasks: false });
   }
 
   // Narrows a list the caller already holds. Kept generic over `difficulty` so it stays a
@@ -69,5 +98,15 @@ export function useRankFilter() {
     return list.filter((item) => selectedRankSet.value.has(item.difficulty));
   }
 
-  return { selectedRanks, isRankSelected, isFiltered, toggleRank, clearFilter, filterByRank };
+  return {
+    selectedRanks,
+    isRankSelected,
+    isRankFiltered,
+    isFiltered,
+    hideSubTasks,
+    toggleRank,
+    toggleSubTasks,
+    clearFilter,
+    filterByRank,
+  };
 }

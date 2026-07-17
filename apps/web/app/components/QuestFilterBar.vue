@@ -9,12 +9,13 @@ import { rankColor } from '~/lib/ranks';
 // instead of taking it as props: passing it down would only make a second copy of
 // something the address already owns. The two counts are the exception — only the page
 // can count its own list — so they come in as props.
-defineProps<{
+const props = defineProps<{
   shown: number;
   total: number;
 }>();
 
-const { isRankSelected, isFiltered, toggleRank, clearFilter } = useRankFilter();
+const { isRankSelected, isRankFiltered, isFiltered, hideSubTasks, toggleRank, toggleSubTasks, clearFilter } =
+  useRankFilter();
 
 // A lit chip *is* the rank badge from QuestCard (rank colour + glow); an unlit one keeps
 // the shape and the letter but falls back to a muted outline via classes, so "off" reads
@@ -24,6 +25,22 @@ function chipStyle(rank: Difficulty) {
   const color = rankColor(rank);
   return { color, borderColor: color };
 }
+
+// One clause per filter the player actually turned on, so "Clear" never sits next to a
+// blank reason.
+//
+// The count is deliberately rank-only. `shown`/`total` both count top-level quests, and
+// hiding sub-tasks removes none of them — so with the toggle as the only filter the count
+// would read "Showing 5 of 5": true, but it reads like a filter that failed. Rather than
+// bend the numbers to look busy (counting sub-tasks into `total` would be inventing a
+// denominator the list never had), the toggle states itself in words and leaves the count
+// alone.
+const summaryParts = computed(() => {
+  const parts: string[] = [];
+  if (isRankFiltered.value) parts.push(`Showing ${props.shown} of ${props.total}`);
+  if (hideSubTasks.value) parts.push('Sub-tasks hidden');
+  return parts;
+});
 </script>
 
 <template>
@@ -43,8 +60,18 @@ function chipStyle(rank: Difficulty) {
       </button>
     </div>
 
+    <button
+      type="button"
+      :aria-pressed="hideSubTasks"
+      class="cursor-pointer rounded-none border px-[0.6rem] py-[0.3rem] text-[0.75rem] font-semibold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
+      :class="hideSubTasks ? 'border-accent bg-accent/15 text-ink' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
+      @click="toggleSubTasks"
+    >
+      Hide sub-tasks
+    </button>
+
     <p v-if="isFiltered" class="m-0 flex items-center gap-2 text-[0.75rem] text-ink-muted">
-      Showing {{ shown }} of {{ total }}
+      {{ summaryParts.join(' · ') }}
       <span aria-hidden="true">·</span>
       <button
         type="button"

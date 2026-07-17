@@ -12,8 +12,11 @@ const props = withDefaults(
     parentName?: string | null;
     // Title becomes a button that emits `open` (used by the list to open detail).
     selectable?: boolean;
+    // Render this quest's sub-tasks nested underneath it. The list turns this off for its
+    // "Hide sub-tasks" filter; defaults on so every other caller keeps rendering them.
+    showSubTasks?: boolean;
   }>(),
-  { isSubTask: false, parentName: null, selectable: false },
+  { isSubTask: false, parentName: null, selectable: false, showSubTasks: true },
 );
 const emit = defineEmits<{
   completed: [result: CompleteResult];
@@ -113,7 +116,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
     </article>
 
     <!-- Nested sub-tasks: indented and dimmed slightly to read as children. -->
-    <div v-if="quest.subTasks?.length" class="ml-5 flex flex-col gap-2 border-l border-line pl-3">
+    <div v-if="showSubTasks && quest.subTasks?.length" class="ml-5 flex flex-col gap-2 border-l border-line pl-3">
       <QuestCard
         v-for="st in quest.subTasks"
         :key="st.id"

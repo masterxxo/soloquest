@@ -169,11 +169,17 @@ All of the following exist, are used, and are meant to stay:
     user-visible copy: headings, tab labels, buttons, toasts. That copy is deliberate; do
     not "fix" it to say "recurring".
   - Components are already named `Recurring*`. Leave them.
-- **The quest list is top-level only, on purpose** — `index.vue` groups only
-  `parentId == null` quests and `QuestCard` renders sub-tasks nested under their parent.
-  The list GET *does* return sub-tasks as flat rows (it passes `include=subTasks`, not
-  `parentId=null`) and the page drops them. So a "top-level only" filter or toggle is a
-  no-op by construction — it was specced once and deliberately not built. Do not add one.
+- **The quest list's flat grouping is top-level only, on purpose** — `index.vue` groups
+  only `parentId == null` quests (`baseQuests`). The list GET *does* return sub-tasks as
+  flat rows (it passes `include=subTasks`, not `parentId=null`) and the page drops them, so
+  a filter that removes sub-task *rows* from that flat list is a no-op by construction — do
+  not add one. Sub-tasks are still visible, but *only* nested: `QuestCard` renders each
+  quest's `subTasks` indented under it. That nested rendering is the real, hideable surface,
+  and the **"Hide sub-tasks"** filter (`?top=1`) targets exactly it — it toggles
+  `QuestCard`'s `showSubTasks` prop, collapsing the nested block, and removes no quest from
+  the list. It lives in `useRankFilter` alongside the ranks (so "is any filter on" and
+  "Clear" span both dimensions) and, because it narrows no count, deliberately does **not**
+  feed "Showing X of Y" — it shows its own "Sub-tasks hidden" note instead.
 - **No squashing of Drizzle migrations.** The history stands.
 - **Rank auto-derivation from sub-tasks is frozen** on purpose; the rank check only ever
   produces a non-blocking warning.

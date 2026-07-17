@@ -118,7 +118,7 @@ useKeyboardShortcuts([
 // The state and its URL encoding live in useRankFilter; the chips live in QuestFilterBar
 // (which reads the same composable). The page keeps only what is genuinely its own: the
 // list to narrow, and clearing from its own empty state.
-const { filterByRank, clearFilter } = useRankFilter();
+const { filterByRank, clearFilter, hideSubTasks } = useRankFilter();
 
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
@@ -218,6 +218,7 @@ const questGroups = computed<QuestGroup[]>(() => {
             :key="q.id"
             :quest="q"
             selectable
+            :show-sub-tasks="!hideSubTasks"
             @open="openQuestDetail"
             @edit="openEditQuest"
             @completed="onCompleted"

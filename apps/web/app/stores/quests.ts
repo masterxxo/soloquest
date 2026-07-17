@@ -94,7 +94,18 @@ export const useQuestsStore = defineStore('quests', {
 
     // ── One-off quests ──────────────────────────────────────────────────────
     addQuest(result: QuestWithWarnings) {
-      this.activeQuests = [result.quest, ...this.activeQuests];
+      const quest = result.quest;
+      if (quest.parentId != null) {
+        // A new sub-task is never a top-level row: the list drops `parentId != null` and
+        // renders sub-tasks only nested under their parent's QuestCard. So fold it into the
+        // parent's `subTasks` instead of prepending it flat — otherwise it stays invisible
+        // until the next refetch rebuilds the nesting.
+        this.activeQuests = this.activeQuests.map((q) =>
+          q.id === quest.parentId ? { ...q, subTasks: [...(q.subTasks ?? []), quest] } : q,
+        );
+      } else {
+        this.activeQuests = [quest, ...this.activeQuests];
+      }
       useFeedbackStore().showWarnings(result.warnings);
     },
     // Completion: drop from the active list, apply server-authoritative player state,
