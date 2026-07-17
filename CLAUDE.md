@@ -69,7 +69,12 @@ outside the agent. Re-running it inside the agent is pure overhead.
 - **Database:** PostgreSQL + Drizzle ORM.
 - **Auth:** Better Auth (Drizzle adapter).
 - **Validation:** Zod, schemas in the shared package.
-- **Tests:** Vitest (`apps/api`, `packages/shared` — pure unit tests, no DB).
+- **Tests:** Vitest. Most are pure unit tests (no DB). Logic that must exercise a real
+  transaction/schema uses an **in-process pglite harness** (`apps/api/src/test/db.ts`,
+  `createTestDb()`): a fresh in-memory Postgres (WASM — no Docker, no network, never the
+  prod/dev DB) migrated to the current schema, one per test. Get a database from it and
+  pass it into the code under test — the helpers take a `DrizzleDB` argument, so nothing
+  about `db` or `grantXp` is ever mocked. See `quest-cascade.test.ts` for the pattern.
 - **Lint:** ESLint 9, flat config, shared via `@soloquest/eslint-config`.
 - **Deploy:** Hetzner + Coolify; GitHub Actions runs lint ∥ typecheck → test, then pings
   Coolify's deploy webhooks on `master`.
@@ -138,6 +143,12 @@ All of the following exist, are used, and are meant to stay:
 - Email + password auth; the Better Auth built-in **`name`** is the player's display name.
   There is no `username` field — do not add one.
 - Quest CRUD with difficulty (E–S), deadlines, and sub-tasks (self-referencing `parentId`).
+  Completing a parent **cascades** into its still-active direct sub-tasks: each is closed,
+  granted its XP, and appended to `quest_completions` inside the *same* transaction as the
+  parent (`completeQuestRow`), sharing one `completedAt`. Sub-tasks already `completed`/`failed`
+  are skipped (idempotent — no double XP, no duplicate log). The `/complete` response carries
+  `cascadedCompletions: number`, and `leveledUp`/player state are computed after the whole
+  cascade so a level-up reached only by the summed XP isn't lost.
 - A rank filter on the quest list (`useRankFilter` + `QuestFilterBar`), entirely
   client-side over the already-loaded array — it narrows the deadline grouping, it never
   reaches the API. It is **additive**: the
@@ -183,6 +194,10 @@ All of the following exist, are used, and are meant to stay:
   no "chronicles" domain in `apps/api`, `packages/db` or `packages/shared`.
   - **Sub-tasks are a deliberate, kept feature** for breaking large quests into smaller
   steps. Do not propose removing them or collapsing the parent/sub-task hierarchy.
+  - **The sub-task hierarchy is one level deep by assumption** — the list nests `subTasks`
+  one level and `QuestCard` caps nesting at one. The completion cascade closes exactly that
+  one level of direct children; allowing deeper nesting in the UI would mean making the
+  cascade recursive first.
 - **The quest list's flat grouping is top-level only, on purpose** — `index.vue` groups
   only `parentId == null` quests (`baseQuests`). The list GET *does* return sub-tasks as
   flat rows (it passes `include=subTasks`, not `parentId=null`) and the page drops them, so

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
-import { questCompletions, quests } from '@soloquest/db/schema';
+import { quests } from '@soloquest/db/schema';
 import {
   XP_REWARDS,
   type Difficulty,
@@ -12,10 +12,9 @@ import {
   completionLogQuerySchema,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
-import { grantXp } from '../lib/xp';
 import { findOwnedQuest } from '../lib/quests';
 import {
-  buildQuestCompletion,
+  completeQuestCascade,
   countQuestCompletions,
   getCompletionSummary,
   getCompletionLog,
@@ -187,42 +186,19 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     return c.json({ success: true });
   })
 
-  // Complete a quest and grant XP atomically (server-authoritative).
+  // Complete a quest and grant XP atomically (server-authoritative). Completing a parent
+  // cascades into its still-active sub-tasks: each is closed, granted its XP, and logged in
+  // the SAME transaction. Before this, a completed parent left its sub-tasks active in the
+  // DB but invisible in the UI (they render only nested under a parent that had just left
+  // the active list) — orphaned and unreachable. Now they leave as genuinely done.
   .post('/:id/complete', zValidator('param', questIdParamSchema), async (c) => {
     const sessionUser = c.get('user')!;
     const { id } = c.req.valid('param');
 
-    const result = await db.transaction(async (tx) => {
-      const quest = await findOwnedQuest(tx, id, sessionUser.id);
-      if (!quest) return { error: 'not_found' as const };
-      if (quest.status === 'completed') return { error: 'already_completed' as const };
-
-      // One timestamp for both writes, so the quest and its completion event agree.
-      const completedAt = new Date();
-
-      const [updatedQuest] = await tx
-        .update(quests)
-        .set({ status: 'completed', completedAt })
-        .where(eq(quests.id, id))
-        .returning();
-      if (!updatedQuest) throw new Error('Failed to complete quest');
-
-      // Server-authoritative XP: atomic increment + derived level, inside this tx.
-      const player = await grantXp(tx, sessionUser.id, quest.xpReward);
-
-      // Append the completion event in the same transaction: status, XP and the log
-      // move together or not at all — a granted-but-unlogged completion would silently
-      // undercount the player's history forever.
-      await tx
-        .insert(questCompletions)
-        .values(buildQuestCompletion(quest, quest.xpReward, completedAt));
-
-      return {
-        quest: updatedQuest,
-        player: { xp: player.xp, level: player.level },
-        leveledUp: player.leveledUp,
-      };
-    });
+    // The whole cascade (parent + active sub-tasks, one transaction) lives in the lib so it
+    // can be driven directly by a pglite-backed test; here we just hand it the live client
+    // and map its guard outcomes to HTTP.
+    const result = await completeQuestCascade(db, sessionUser.id, id);
 
     if ('error' in result) {
       return result.error === 'not_found'

@@ -1,8 +1,9 @@
 import { and, count, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
-import { questCompletions } from '@soloquest/db/schema';
+import { questCompletions, quests } from '@soloquest/db/schema';
 import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 import type { DrizzleDB } from './db';
-import type { Quest } from './quests';
+import { findOwnedQuest, type Quest } from './quests';
+import { grantXp, type XpGrant } from './xp';
 import { MS_PER_DAY } from './constants';
 import { getUserDate, toDateString } from './recurrence';
 
@@ -30,6 +31,122 @@ export function buildQuestCompletion(
     xpAwarded,
     completedAt,
   };
+}
+
+/**
+ * Complete a single quest inside an already-open transaction: flip it to `completed`,
+ * grant its XP (atomic increment via {@link grantXp}), and append its completion event.
+ * These are exactly the three writes the single-quest `/complete` performs, factored out
+ * so completing a parent and cascading into its sub-tasks run one code path rather than
+ * two that can drift. `completedAt` is passed in so every quest closed in one cascade
+ * shares the same instant (and the same Chronicles calendar day).
+ *
+ * Must run inside a transaction — {@link grantXp} row-locks the user across its two writes,
+ * and the whole cascade has to roll back together if any quest fails.
+ */
+export async function completeQuestRow(
+  tx: DrizzleDB,
+  quest: Quest,
+  completedAt: Date,
+): Promise<{ quest: Quest; grant: XpGrant }> {
+  const [updated] = await tx
+    .update(quests)
+    .set({ status: 'completed', completedAt })
+    .where(eq(quests.id, quest.id))
+    .returning();
+  if (!updated) throw new Error('Failed to complete quest');
+
+  const grant = await grantXp(tx, quest.userId, quest.xpReward);
+
+  await tx
+    .insert(questCompletions)
+    .values(buildQuestCompletion(quest, quest.xpReward, completedAt));
+
+  return { quest: updated, grant };
+}
+
+/** The player-facing outcome of completing a quest and its cascade. */
+export interface CascadeCompletionResult {
+  quest: Quest;
+  player: { xp: number; level: number };
+  leveledUp: boolean;
+  // How many still-active sub-tasks were closed alongside the parent (0 for a leaf quest).
+  cascadedCompletions: number;
+}
+
+export type CompleteQuestOutcome =
+  | { error: 'not_found' | 'already_completed' }
+  | CascadeCompletionResult;
+
+/**
+ * Complete a quest and cascade into its still-active direct sub-tasks, all in one
+ * transaction. Takes the database handle as an argument (never a module-level singleton)
+ * so the route hands it the live client and tests hand it an ephemeral pglite — the real
+ * transaction, grantXp and completion writes run either way, with nothing mocked.
+ *
+ * Completing a parent used to strand its sub-tasks: active in the DB but gone from the UI
+ * (they render only nested under a parent that has just left the active list). Here each is
+ * closed, granted its XP, and logged, so they leave as genuinely done.
+ *
+ * Guard cases (`not_found`, `already_completed`) return normally — nothing was written, so
+ * the transaction commits harmlessly. Any DB failure mid-cascade throws, rolling the whole
+ * thing back: no parent-completed-but-children-not state can survive.
+ */
+export async function completeQuestCascade(
+  database: DrizzleDB,
+  userId: string,
+  questId: string,
+): Promise<CompleteQuestOutcome> {
+  return database.transaction(async (tx) => {
+    const quest = await findOwnedQuest(tx, questId, userId);
+    if (!quest) return { error: 'not_found' as const };
+    if (quest.status === 'completed') return { error: 'already_completed' as const };
+
+    // One instant for the whole cascade: the parent and every sub-task it closes share a
+    // completedAt, so they agree and land on the same Chronicles calendar day.
+    const completedAt = new Date();
+
+    // Close the parent first (server-authoritative XP + completion event, inside this tx).
+    const { quest: updatedQuest, grant: parentGrant } = await completeQuestRow(
+      tx,
+      quest,
+      completedAt,
+    );
+
+    // Its still-active direct sub-tasks. Only `active` ones — a sub-task already
+    // completed/failed is skipped so a re-run can't double-grant its XP or double-log it,
+    // which is what keeps the cascade idempotent. Scoped to the owner too, never trusting
+    // parentId alone. (Sub-tasks are one level deep in this app; see CLAUDE.md.)
+    const children = await tx
+      .select()
+      .from(quests)
+      .where(
+        and(
+          eq(quests.parentId, questId),
+          eq(quests.userId, userId),
+          eq(quests.status, 'active'),
+        ),
+      );
+
+    // grantXp returns the running cumulative total each call, so the last grant is the
+    // final player state. leveledUp is OR-ed across the chain: level is a monotonic
+    // function of total XP, so "level rose during any single grant" === "level rose over
+    // the whole cascade" — a level-up that only the summed XP reaches is not lost.
+    let player = parentGrant;
+    let leveledUp = parentGrant.leveledUp;
+    for (const child of children) {
+      const { grant } = await completeQuestRow(tx, child, completedAt);
+      player = grant;
+      leveledUp = leveledUp || grant.leveledUp;
+    }
+
+    return {
+      quest: updatedQuest,
+      player: { xp: player.xp, level: player.level },
+      leveledUp,
+      cascadedCompletions: children.length,
+    };
+  });
 }
 
 /**

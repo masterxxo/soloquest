@@ -123,11 +123,21 @@ export const useQuestsStore = defineStore('quests', {
     },
     // Completion: drop from the active list, apply server-authoritative player state,
     // and surface a level-up. Pages then sync their own view state (close detail).
+    // Dropping a top-level parent also removes its nested sub-tasks, which the backend has
+    // just cascade-completed — so the just-closed children leave the board with it, and the
+    // enriched player state already includes their XP.
     applyCompleted(result: CompleteResult) {
       this.dropQuestFromLists(result.quest.id);
       const player = usePlayerStore();
       player.applyProgress(result.player);
-      if (result.leveledUp) useFeedbackStore().showLevelUp(result.player.level);
+      const feedback = useFeedbackStore();
+      // Distinct toast slot from the level-up, so a cascade that also levels up shows both
+      // without one clobbering the other, and never duplicates the level-up notice.
+      if (result.leveledUp) feedback.showLevelUp(result.player.level);
+      if (result.cascadedCompletions > 0) {
+        const n = result.cascadedCompletions;
+        feedback.showInfo(`Completed with ${n} sub-task${n === 1 ? '' : 's'}.`);
+      }
     },
     removeQuest(id: string) {
       this.dropQuestFromLists(id);
