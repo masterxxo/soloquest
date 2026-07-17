@@ -169,6 +169,8 @@ All of the following exist, are used, and are meant to stay:
     user-visible copy: headings, tab labels, buttons, toasts. That copy is deliberate; do
     not "fix" it to say "recurring".
   - Components are already named `Recurring*`. Leave them.
+  - **Sub-tasks are a deliberate, kept feature** for breaking large quests into smaller
+  steps. Do not propose removing them or collapsing the parent/sub-task hierarchy.
 - **The quest list's flat grouping is top-level only, on purpose** — `index.vue` groups
   only `parentId == null` quests (`baseQuests`). The list GET *does* return sub-tasks as
   flat rows (it passes `include=subTasks`, not `parentId=null`) and the page drops them, so
