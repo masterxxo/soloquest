@@ -66,3 +66,25 @@ export type RecurringCalendarDay = RecurringQuestStats['calendar'][number];
 
 // GET /api/user/settings → the user's settings row (currently just timezone + stamps).
 export type UserSettings = InferResponseType<typeof client.api.user.settings.$get, 200>;
+
+// ── Chronicles (UI name for the quest-completion history) ─────────────────────────
+// GET /api/quests/completions/summary → all-time totals, per-rank counts, and a 30-day
+// daily-XP timeline. Backend derives every calendar day in the user's timezone.
+export type CompletionSummary = InferResponseType<
+  typeof client.api.quests.completions.summary.$get,
+  200
+>;
+
+// One day of the timeline: { date: 'YYYY-MM-DD', xp, count }.
+export type TimelineDay = CompletionSummary['timeline'][number];
+
+// GET /api/quests/completions → keyset-paginated completion log, newest first. The query
+// is validated, so the response is a 200|400 union — pin 200 for the page shape.
+export type CompletionLogPage = InferResponseType<
+  typeof client.api.quests.completions.$get,
+  200
+>;
+
+// One completion-log row (snapshot: title/difficulty/xp survive the quest's deletion),
+// plus `completedDate`, the user-timezone calendar day the frontend groups on.
+export type CompletionLogEntry = CompletionLogPage['items'][number];

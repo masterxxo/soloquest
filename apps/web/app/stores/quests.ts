@@ -93,6 +93,19 @@ export const useQuestsStore = defineStore('quests', {
     },
 
     // ── One-off quests ──────────────────────────────────────────────────────
+    // Remove a quest id from the active list whether it's a top-level row OR nested as a
+    // sub-task under its parent. Sub-tasks live only inside their parent's `subTasks` array
+    // (the list drops `parentId != null` top-level rows), so a top-level filter alone would
+    // leave a just-completed / deleted sub-task on screen. Shared by applyCompleted/removeQuest.
+    dropQuestFromLists(id: string) {
+      this.activeQuests = this.activeQuests
+        .filter((q) => q.id !== id)
+        .map((q) => {
+          const subTasks = q.subTasks;
+          if (!subTasks?.some((st) => st.id === id)) return q;
+          return { ...q, subTasks: subTasks.filter((st) => st.id !== id) };
+        });
+    },
     addQuest(result: QuestWithWarnings) {
       const quest = result.quest;
       if (quest.parentId != null) {
@@ -111,19 +124,28 @@ export const useQuestsStore = defineStore('quests', {
     // Completion: drop from the active list, apply server-authoritative player state,
     // and surface a level-up. Pages then sync their own view state (close detail).
     applyCompleted(result: CompleteResult) {
-      this.activeQuests = this.activeQuests.filter((q) => q.id !== result.quest.id);
+      this.dropQuestFromLists(result.quest.id);
       const player = usePlayerStore();
       player.applyProgress(result.player);
       if (result.leveledUp) useFeedbackStore().showLevelUp(result.player.level);
     },
     removeQuest(id: string) {
-      this.activeQuests = this.activeQuests.filter((q) => q.id !== id);
+      this.dropQuestFromLists(id);
     },
     applyUpdated(result: QuestWithWarnings) {
-      // Merge so nested subTasks (absent from the PATCH response) are preserved.
-      this.activeQuests = this.activeQuests.map((q) =>
-        q.id === result.quest.id ? { ...q, ...result.quest } : q,
-      );
+      const updated = result.quest;
+      this.activeQuests = this.activeQuests.map((q) => {
+        // Top-level match: merge so nested subTasks (absent from the PATCH response) survive.
+        if (q.id === updated.id) return { ...q, ...updated };
+        // Nested match: a sub-task edited from the list lives inside its parent's subTasks,
+        // so patch it there too — otherwise the row wouldn't reflect the edit until refetch.
+        const subTasks = q.subTasks;
+        if (!subTasks?.some((st) => st.id === updated.id)) return q;
+        return {
+          ...q,
+          subTasks: subTasks.map((st) => (st.id === updated.id ? { ...st, ...updated } : st)),
+        };
+      });
       useFeedbackStore().showWarnings(result.warnings);
     },
 

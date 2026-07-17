@@ -21,11 +21,12 @@ watchEffect(() => player.hydrate(session.value?.user));
 onMounted(() => { quests.load(); });
 
 const tabs = [
-  { to: '/',          label: 'Quests',    icon: 'quests' },
-  { to: '/rituals',   label: 'Rituals',   icon: 'rituals' },
-  { to: '/status',    label: 'Status',    icon: 'status' },
-  { to: '/glossary',  label: 'Glossary',  icon: 'glossary', soon: true },
-  { to: '/items',     label: 'Items',     icon: 'items',    soon: true },
+  { to: '/',           label: 'Quests',     icon: 'quests' },
+  { to: '/rituals',    label: 'Rituals',    icon: 'rituals' },
+  { to: '/chronicles', label: 'Chronicles', icon: 'chronicles' },
+  { to: '/status',     label: 'Status',     icon: 'status' },
+  { to: '/glossary',   label: 'Glossary',   icon: 'glossary', soon: true },
+  { to: '/items',      label: 'Items',      icon: 'items',    soon: true },
 ];
 // The mobile bottom bar shows only the 4 primary tabs; the stubs (Glossary/Items) are
 // omitted while they're still placeholders.

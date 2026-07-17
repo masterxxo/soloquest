@@ -26,8 +26,15 @@ const emit = defineEmits<{
   edit: [quest: Quest, event: MouseEvent];
 }>();
 
-// Top-level list cards open a detail view; sub-tasks don't.
-const openable = computed(() => props.selectable && !props.isSubTask);
+// A selectable card opens its detail on title click — top-level rows and, now, the list's
+// nested sub-tasks (which the parent forwards `selectable` to). QuestDetail lists sub-tasks
+// without `selectable`, so those stay plain text, as before.
+const openable = computed(() => props.selectable);
+
+// The full action set (Complete / Delete). Top-level cards always get it; a sub-task gets it
+// only when it's an interactive list row (`selectable`) — never in QuestDetail's read-style
+// sub-quest list, which keeps Edit-only. Edit itself is shown for any active card below.
+const showActions = computed(() => !props.isSubTask || props.selectable);
 
 // Only active quests can be edited/completed (mirrors the backend guard).
 const isActive = computed(() => props.quest.status === 'active');
@@ -90,11 +97,12 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         >
           Edit
         </button>
-        <!-- Sub-tasks only expose Edit; Complete/Delete stay on the top-level quest.
-             Disabled while its own completion is in flight — a second request would grant
-             the XP twice — with a pulsing outline so the wait reads as "working". -->
+        <!-- Complete goes through useQuestActions → the store's in-flight guard, so a
+             sub-task can't double-grant XP any more than a top-level quest can. Disabled
+             while its own completion is in flight, with a pulsing outline so the wait reads
+             as "working". -->
         <button
-          v-if="isActive && !isSubTask"
+          v-if="isActive && showActions"
           class="min-h-[44px] cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0"
           :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
           :disabled="completing || deleting"
@@ -104,7 +112,7 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
           {{ completing ? '…' : 'Complete' }}
         </button>
         <button
-          v-if="!isSubTask"
+          v-if="showActions"
           class="min-h-[44px] min-w-[44px] cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55] md:min-h-0 md:min-w-0"
           :disabled="completing || deleting"
           @click="onDelete"
@@ -115,15 +123,24 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       </div>
     </article>
 
-    <!-- Nested sub-tasks: indented and dimmed slightly to read as children. -->
+    <!-- Nested sub-tasks: indented and border-marked to read as children. They get the same
+         action palette as their parent — `selectable` is forwarded so they open a detail and
+         all events bubble up to the page (the same handlers the top-level card uses). Nesting
+         is capped at one level: `show-sub-tasks="false"` stops a sub-task from rendering its
+         own sub-tasks, so a QuestCard can never recurse into itself indefinitely. -->
     <div v-if="showSubTasks && quest.subTasks?.length" class="ml-5 flex flex-col gap-2 border-l border-line pl-3">
       <QuestCard
         v-for="st in quest.subTasks"
         :key="st.id"
         :quest="st"
         is-sub-task
+        :selectable="selectable"
+        :show-sub-tasks="false"
         :parent-name="quest.title"
+        @open="(q, e) => emit('open', q, e)"
         @edit="(q, e) => emit('edit', q, e)"
+        @completed="(r) => emit('completed', r)"
+        @deleted="(id) => emit('deleted', id)"
       />
     </div>
   </div>

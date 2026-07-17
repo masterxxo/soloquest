@@ -28,6 +28,14 @@ defineProps<{ name: string }>();
       <path d="M12 3c.6 3-1.8 4.2-2.8 6.2A5 5 0 0 0 17 12c0-3-2-4.2-2-7-1.2.8-2 2-3 4-.6-2 0-4 0-6z" />
     </template>
 
+    <!-- Chronicles — hourglass (history / time) -->
+    <template v-else-if="name === 'chronicles'">
+      <path d="M6 3h12" />
+      <path d="M6 21h12" />
+      <path d="M7 3c0 5 5 6 5 9s-5 4-5 9" />
+      <path d="M17 3c0 5-5 6-5 9s5 4 5 9" />
+    </template>
+
     <!-- Status — bust in a ring -->
     <template v-else-if="name === 'status'">
       <circle cx="12" cy="12" r="9" />

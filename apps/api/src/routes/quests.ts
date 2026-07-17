@@ -9,11 +9,18 @@ import {
   updateQuestSchema,
   questIdParamSchema,
   questListQuerySchema,
+  completionLogQuerySchema,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 import { grantXp } from '../lib/xp';
 import { findOwnedQuest } from '../lib/quests';
-import { buildQuestCompletion, countQuestCompletions } from '../lib/quest-completions';
+import {
+  buildQuestCompletion,
+  countQuestCompletions,
+  getCompletionSummary,
+  getCompletionLog,
+} from '../lib/quest-completions';
+import { getUserTimezone } from '../lib/user-settings';
 import { effectiveParentId, rankWarnings } from '../lib/rank';
 import { zValidator } from '../lib/validate';
 
@@ -59,6 +66,27 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     const userId = c.get('user')!.id;
     const totalCompleted = await countQuestCompletions(db, userId);
     return c.json({ totalCompleted });
+  })
+
+  // Chronicles header (UI name): all-time totals + per-rank counts + a 30-day daily-XP
+  // timeline, in one round-trip. `totalCompleted` here counts the same log rows as /stats
+  // above, so the two views can't drift. Calendar days are computed in the user's timezone.
+  .get('/completions/summary', async (c) => {
+    const userId = c.get('user')!.id;
+    const timezone = await getUserTimezone(db, userId);
+    const summary = await getCompletionSummary(db, userId, timezone);
+    return c.json(summary);
+  })
+
+  // Chronicles log (UI name): the completion history, newest first, keyset-paginated.
+  // Each item carries `completedDate` (user-timezone calendar day) so the frontend groups
+  // by day without ever touching the raw instant.
+  .get('/completions', zValidator('query', completionLogQuerySchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const { limit, cursor } = c.req.valid('query');
+    const timezone = await getUserTimezone(db, userId);
+    const page = await getCompletionLog(db, userId, timezone, limit, cursor);
+    return c.json(page);
   })
 
   // Create a quest. xpReward is derived server-side from difficulty; status defaults

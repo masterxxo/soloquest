@@ -149,6 +149,14 @@ All of the following exist, are used, and are meant to stay:
   calendar.
 - `quest_completions`: an append-only event log of completions, kept independently of the
   quests themselves.
+- **Chronicles** — a read-only history view of completed quests (stats + a 30-day daily-XP
+  bar chart + a completion log grouped by day). Two read endpoints under the existing quests
+  router: `GET /api/quests/completions/summary` (all-time totals + `byRank` + timeline) and
+  `GET /api/quests/completions` (keyset-paginated log on `completedAt DESC, id DESC`). Both
+  derive each calendar day from `completedAt` in the user's timezone via `getUserDate`
+  (never a UTC `date_trunc`), and `summary.totalCompleted` counts the same log rows as
+  `/stats`, so the two can't diverge. Recurring quests keep their own streak/heatmap and are
+  deliberately not part of Chronicles.
 - Achievements (streak milestones and lifetime totals), seeded idempotently.
 - Per-user timezone (`user_settings`), and a nightly cron that judges yesterday in each
   user's own timezone and resets broken streaks.
@@ -169,6 +177,10 @@ All of the following exist, are used, and are meant to stay:
     user-visible copy: headings, tab labels, buttons, toasts. That copy is deliberate; do
     not "fix" it to say "recurring".
   - Components are already named `Recurring*`. Leave them.
+- **"Chronicles" is a UI label only**, exactly like "Rituals". The `/chronicles` route,
+  `chronicles.vue`, `Chronicle*` components and user-facing copy may say "Chronicles"; the
+  backend, tables, endpoints and wire types stay in `quest-completions` vocabulary. There is
+  no "chronicles" domain in `apps/api`, `packages/db` or `packages/shared`.
   - **Sub-tasks are a deliberate, kept feature** for breaking large quests into smaller
   steps. Do not propose removing them or collapsing the parent/sub-task hierarchy.
 - **The quest list's flat grouping is top-level only, on purpose** — `index.vue` groups

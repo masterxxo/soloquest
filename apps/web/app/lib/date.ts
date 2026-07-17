@@ -26,6 +26,46 @@ export interface DeadlineBuckets<T> {
   standing: T[];
 }
 
+// A relative group of completion-log rows, keyed for :key and titled for its header.
+export interface CompletionGroup<T> {
+  key: string;
+  label: string;
+  items: T[];
+}
+
+// Groups completion rows (already newest-first) by their user-timezone calendar day, into
+// relative buckets: Today / Yesterday / This week (the rest of the last 7 days) / then one
+// bucket per calendar month ("June 2026"). Operates only on the safe `completedDate` strings
+// the backend computed — no instant-to-day conversion happens here, so no day-boundary
+// off-by-one. Insertion order is preserved, so the returned groups already read newest-first.
+export function groupByCompletionDate<T extends { completedDate: string }>(
+  items: T[],
+): CompletionGroup<T>[] {
+  const today = localDateString();
+  const yesterday = localDateString(new Date(Date.now() - 86_400_000));
+  // Inclusive lower edge of "this week": the last 7 calendar days ending today.
+  const weekStart = localDateString(new Date(Date.now() - 6 * 86_400_000));
+
+  const classify = (date: string): { key: string; label: string } => {
+    if (date === today) return { key: 'today', label: 'Today' };
+    if (date === yesterday) return { key: 'yesterday', label: 'Yesterday' };
+    // Everything reaching here is older than yesterday (completions are never in the future).
+    if (date >= weekStart) return { key: 'this-week', label: 'This week' };
+    const [y, m, d] = date.split('-').map(Number);
+    const dt = new Date(y!, m! - 1, d!);
+    return { key: date.slice(0, 7), label: formatDate(dt, { month: 'long', year: 'numeric' }) };
+  };
+
+  const groups = new Map<string, CompletionGroup<T>>();
+  for (const item of items) {
+    const { key, label } = classify(item.completedDate);
+    const group = groups.get(key);
+    if (group) group.items.push(item);
+    else groups.set(key, { key, label, items: [item] });
+  }
+  return [...groups.values()];
+}
+
 export function bucketByDeadline<T extends { deadline?: string | Date | null }>(
   items: T[],
 ): DeadlineBuckets<T> {

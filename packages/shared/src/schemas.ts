@@ -25,3 +25,11 @@ export const questListQuerySchema = z.object({
   // include=subTasks attaches each quest's sub-tasks to the response rows.
   include: z.literal("subTasks").optional(),
 });
+
+// Query for the paginated quest-completion log (GET /api/quests/completions). Keyset
+// pagination: `cursor` is an opaque token encoding the last row's (completedAt, id), not
+// an offset. `limit` is clamped so a single page stays bounded.
+export const completionLogQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.string().optional(),
+});
