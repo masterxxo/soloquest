@@ -5,6 +5,7 @@ import { quests } from '@soloquest/db/schema';
 import {
   XP_REWARDS,
   type Difficulty,
+  type TagColor,
   createQuestSchema,
   updateQuestSchema,
   questIdParamSchema,
@@ -12,7 +13,8 @@ import {
   completionLogQuerySchema,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
-import { findOwnedQuest } from '../lib/quests';
+import { findOwnedQuest, type Quest } from '../lib/quests';
+import { assertOwnedTags, replaceQuestTags, getQuestTags } from '../lib/tags';
 import {
   completeQuestCascade,
   countQuestCompletions,
@@ -33,6 +35,33 @@ async function buildRankWarnings(
   return rankWarnings(difficulty, parent);
 }
 
+// A quest row as returned by the relational list query, carrying its tag pins (and, when
+// include=subTasks, its sub-tasks each with their own pins). The `with` config below always
+// requests questTags, so this cast just names the shape the query already produces.
+type QuestTagJoin = { tag: { id: string; name: string; color: TagColor } };
+type QuestRowWithTags = Quest & {
+  questTags: QuestTagJoin[];
+  subTasks?: Array<Quest & { questTags: QuestTagJoin[] }>;
+};
+
+// Flatten each quest's `questTags` join rows into a plain `tags: [{ id, name }]` array (and
+// do the same one level down for sub-tasks). Keeps the join table out of the wire shape.
+function shapeQuestRow(row: QuestRowWithTags) {
+  const { questTags, subTasks, ...quest } = row;
+  return {
+    ...quest,
+    tags: questTags.map((qt) => qt.tag),
+    ...(subTasks
+      ? {
+          subTasks: subTasks.map(({ questTags: subPins, ...sub }) => ({
+            ...sub,
+            tags: subPins.map((qt) => qt.tag),
+          })),
+        }
+      : {}),
+  };
+}
+
 // Chained so Hono RPC can infer the route types end-to-end.
 export const questsRouter = new Hono<{ Variables: Variables }>()
   .use('*', requireAuth)
@@ -49,12 +78,23 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     if (parentId === 'null') conditions.push(isNull(quests.parentId));
     else if (parentId) conditions.push(eq(quests.parentId, parentId));
 
-    const rows = await db.query.quests.findMany({
+    // Tags come through a batched relational query (questTags → tag), never per-quest — no
+    // N+1: one round-trip fetches every row's pins (and sub-tasks' pins) at once.
+    const rows = (await db.query.quests.findMany({
       where: and(...conditions),
       orderBy: desc(quests.createdAt),
-      ...(include === 'subTasks' ? { with: { subTasks: true } } : {}),
-    });
-    return c.json(rows);
+      with: {
+        questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } },
+        ...(include === 'subTasks'
+          ? {
+              subTasks: {
+                with: { questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } } },
+              },
+            }
+          : {}),
+      },
+    })) as unknown as QuestRowWithTags[];
+    return c.json(rows.map(shapeQuestRow));
   })
 
   // Lifetime quest counters for the current user, read from the completion log rather
@@ -100,26 +140,39 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
       if (!parent) return c.json({ error: 'Parent quest not found' }, 404);
     }
 
-    const [created] = await db
-      .insert(quests)
-      .values({
-        userId,
-        title: input.title,
-        description: input.description,
-        difficulty: input.difficulty,
-        xpReward: XP_REWARDS[input.difficulty],
-        deadline: input.deadline,
-        parentId: input.parentId,
-      })
-      .returning();
-    if (!created) throw new Error('Failed to create quest');
+    // Reject foreign tags up front, before creating anything — a bad tagId must never leave a
+    // quest half-created (its own guard, so ownership isn't trusted from the client).
+    if (input.tagIds && !(await assertOwnedTags(db, userId, input.tagIds))) {
+      return c.json({ error: 'One or more tags not found' }, 400);
+    }
 
+    // Quest row and its tag pins land in one transaction, so a quest never exists tagless
+    // after a partial failure.
+    const created = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(quests)
+        .values({
+          userId,
+          title: input.title,
+          description: input.description,
+          difficulty: input.difficulty,
+          xpReward: XP_REWARDS[input.difficulty],
+          deadline: input.deadline,
+          parentId: input.parentId,
+        })
+        .returning();
+      if (!row) throw new Error('Failed to create quest');
+      if (input.tagIds?.length) await replaceQuestTags(tx, row.id, input.tagIds);
+      return row;
+    });
+
+    const tags = await getQuestTags(db, created.id);
     const warnings = await buildRankWarnings(
       userId,
       input.difficulty,
       input.parentId,
     );
-    return c.json({ quest: created, warnings }, 201);
+    return c.json({ quest: { ...created, tags }, warnings }, 201);
   })
 
   // Partial edit, scoped to the owner. If difficulty changes, xpReward is recomputed
@@ -150,17 +203,36 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         if (!parent) return c.json({ error: 'Parent quest not found' }, 404);
       }
 
-      const [updated] = await db
-        .update(quests)
-        .set({
-          ...input,
-          // Keep xpReward authoritative when the difficulty changes.
-          ...(input.difficulty ? { xpReward: XP_REWARDS[input.difficulty] } : {}),
-        })
-        .where(and(eq(quests.id, id), eq(quests.userId, userId)))
-        .returning();
-      if (!updated) throw new Error('Failed to update quest');
+      // tagIds is not a column — split it out so it never reaches `.set()`, and validate
+      // ownership before touching the DB. `undefined` = leave tags untouched; a present array
+      // (even empty) = replace with exactly that set.
+      const { tagIds, ...questFields } = input;
+      if (tagIds !== undefined && !(await assertOwnedTags(db, userId, tagIds))) {
+        return c.json({ error: 'One or more tags not found' }, 400);
+      }
+      const hasFieldChanges = Object.keys(questFields).length > 0;
 
+      const updated = await db.transaction(async (tx) => {
+        let row: Quest = existing;
+        if (hasFieldChanges) {
+          const [r] = await tx
+            .update(quests)
+            .set({
+              ...questFields,
+              // Keep xpReward authoritative when the difficulty changes.
+              ...(questFields.difficulty ? { xpReward: XP_REWARDS[questFields.difficulty] } : {}),
+            })
+            .where(and(eq(quests.id, id), eq(quests.userId, userId)))
+            .returning();
+          if (!r) throw new Error('Failed to update quest');
+          row = r;
+        }
+        // Replace (not append): drop the old pins and set exactly what was sent.
+        if (tagIds !== undefined) await replaceQuestTags(tx, id, tagIds);
+        return row;
+      });
+
+      const tags = await getQuestTags(db, id);
       // Warn against the *effective* quest after this PATCH — both the difficulty and the
       // parent it ends up with. A PATCH that only raises the difficulty of an existing
       // sub-task must still warn, so an omitted parentId falls back to the stored one.
@@ -169,7 +241,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
         input.difficulty ?? existing.difficulty,
         effectiveParentId(input.parentId, existing.parentId),
       );
-      return c.json({ quest: updated, warnings });
+      return c.json({ quest: { ...updated, tags }, warnings });
     },
   )
 

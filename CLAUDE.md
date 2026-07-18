@@ -168,6 +168,30 @@ All of the following exist, are used, and are meant to stay:
   (never a UTC `date_trunc`), and `summary.totalCompleted` counts the same log rows as
   `/stats`, so the two can't diverge. Recurring quests keep their own streak/heatmap and are
   deliberately not part of Chronicles.
+- **Tags** — user-defined labels pinned to quests (many-to-many via `quest_tags`). A tag has
+  a display `name` (as typed), a `normalizedName` (`trim().toLowerCase()`, via `normalizeTagName`
+  in shared), and a `color`. A **UNIQUE(`userId`, `normalizedName`)** DB constraint is what makes
+  `Dom` / `dom` / ` DOM ` one tag, not three. `POST /api/tags` is **create-or-return** (200 on
+  collision, not an error) so on-the-fly creation from the quest form can't race into a duplicate.
+  Endpoints live in their own router (`/api/tags`: list-with-`usageCount` / create / update
+  (rename and/or recolour) / delete); `GET /api/quests` attaches each quest's `tags:
+  [{id,name,color}]` through one batched relational query (no N+1), and quest POST/PATCH take
+  `tagIds` (ownership-checked, capped at `MAX_TAGS_PER_QUEST`, **replace** semantics on PATCH).
+  The quest form has a Todoist-style combobox (`QuestTagPicker`), the quest list a client-side
+  **OR** tag filter in a searchable popover (`QuestTagFilter`, folded into `useRankFilter`,
+  `?tags=` in the URL — unknown ids are pruned from the URL on load), and Status a
+  rename/recolour/delete manager (`TagManager`).
+  - **Colours: the DB stores the palette KEY, never a hex.** The canonical 15-key palette
+    (`TAG_COLORS`) + its hex map (`TAG_COLOR_HEX`) live in `@soloquest/shared/enums`; the column
+    is a `pgEnum` (`tag_color`) consuming that tuple — so its order is append-only like every
+    other enum. A tag created without a colour gets a deterministic one from its name
+    (`tagColorForName`), so on-the-fly tags spread across the palette. The single key→style
+    mapping is `apps/web/app/lib/tag-colors.ts` (bound via `:style`, since Tailwind can't
+    generate classes from runtime values) — no hex is written in any component.
+  - **`usageCount` counts every existing quest with the tag, of any status.** Completing a
+    quest keeps its row and pin, so the count only moves on quest create/update/delete (and
+    on-the-fly tag create). Freshness is one mechanism: the quests store calls the tags store's
+    `invalidate()` from exactly those paths, and the next `load()` (e.g. entering Status) refetches.
 - Achievements (streak milestones and lifetime totals), seeded idempotently.
 - Per-user timezone (`user_settings`), and a nightly cron that judges yesterday in each
   user's own timezone and resets broken streaks.
@@ -209,6 +233,12 @@ All of the following exist, are used, and are meant to stay:
   the list. It lives in `useRankFilter` alongside the ranks (so "is any filter on" and
   "Clear" span both dimensions) and, because it narrows no count, deliberately does **not**
   feed "Showing X of Y" — it shows its own "Sub-tasks hidden" note instead.
+- **Tags stay v1-scoped on purpose.** Deliberately *not* built (do not add without a new
+  decision): tags on rituals (`recurring_quests`), tag inheritance by sub-tasks, tags in the
+  `quest_completions` snapshot / Chronicles, a dedicated tag-management page, and
+  `#`-autocomplete in the title. Colours exist but the picker does *not* offer a colour at
+  on-the-fly create time (deterministic default + recolour on Status instead — keeps the
+  combobox simple). Tags stay `recurring`-free and are a quest-only concern.
 - **No squashing of Drizzle migrations.** The history stands.
 - **Rank auto-derivation from sub-tasks is frozen** on purpose; the rank check only ever
   produces a non-blocking warning.

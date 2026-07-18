@@ -57,6 +57,20 @@
       "when": 1783978964219,
       "tag": "0007_daffy_zarda",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784388298538,
+      "tag": "0008_remarkable_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784390686060,
+      "tag": "0009_rainy_spirit",
+      "breakpoints": true
     }
   ]
 }

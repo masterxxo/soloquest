@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import { client, type Quest, type QuestWithWarnings } from '~/lib/api-client';
+import { client, type Quest, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
 import { localDateString } from '~/lib/date';
 import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
@@ -20,6 +20,7 @@ const description = ref('');
 const difficulty = ref<Difficulty>('E');
 const deadline = ref(''); // yyyy-mm-dd from <input type="date">
 const parentId = ref(''); // '' = None (sent as null)
+const selectedTags = ref<QuestTag[]>([]); // tag pins, sent as tagIds
 const submitting = ref(false);
 const errorMsg = ref<string | null>(null);
 // Rank warnings from the last server response (non-blocking; shown under difficulty).
@@ -51,6 +52,7 @@ watch(
     difficulty.value = q?.difficulty ?? 'E';
     deadline.value = q?.deadline ? toDateInput(q.deadline) : '';
     parentId.value = q?.parentId ?? '';
+    selectedTags.value = q?.tags ? q.tags.map((t) => ({ ...t })) : [];
   },
   { immediate: true },
 );
@@ -65,6 +67,7 @@ async function onCreate() {
       // null. Never send "" — z.coerce.date() would choke on it.
       deadline: deadline.value ? new Date(deadline.value) : null,
       parentId: parentId.value || null,
+      tagIds: selectedTags.value.map((t) => t.id),
     },
   });
   if (!res.ok) {
@@ -79,6 +82,7 @@ async function onCreate() {
   difficulty.value = 'E';
   deadline.value = '';
   parentId.value = '';
+  selectedTags.value = [];
 }
 
 async function onEdit() {
@@ -90,6 +94,7 @@ async function onEdit() {
     difficulty?: Difficulty;
     deadline?: Date | null;
     parentId?: string | null;
+    tagIds?: string[];
   } = {};
   if (title.value !== initial.title) changes.title = title.value;
   if (description.value !== (initial.description ?? '')) changes.description = description.value;
@@ -98,6 +103,13 @@ async function onEdit() {
   // Empty now → null (clear it); set/changed → Date; unchanged → omit.
   if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
   if (parentId.value !== (initial.parentId ?? '')) changes.parentId = parentId.value || null;
+  // Send tagIds only when the set actually changed (order-insensitive), so a no-op edit stays
+  // a no-op. A present array — even empty — means "replace with exactly this" server-side.
+  const initialTagIds = new Set((initial.tags ?? []).map((t) => t.id));
+  const currentTagIds = selectedTags.value.map((t) => t.id);
+  const tagsChanged =
+    initialTagIds.size !== currentTagIds.length || currentTagIds.some((id) => !initialTagIds.has(id));
+  if (tagsChanged) changes.tagIds = currentTagIds;
 
   if (Object.keys(changes).length === 0) {
     emit('cancel');
@@ -179,6 +191,8 @@ async function onSubmit() {
         <option v-for="q in parentChoices" :key="q.id" :value="q.id">{{ q.title }}</option>
       </select>
     </label>
+
+    <QuestTagPicker v-model="selectedTags" />
 
     <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
 

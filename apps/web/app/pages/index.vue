@@ -118,7 +118,7 @@ useKeyboardShortcuts([
 // The state and its URL encoding live in useRankFilter; the chips live in QuestFilterBar
 // (which reads the same composable). The page keeps only what is genuinely its own: the
 // list to narrow, and clearing from its own empty state.
-const { filterByRank, clearFilter, hideSubTasks } = useRankFilter();
+const { filterQuests, clearFilter, hideSubTasks } = useRankFilter();
 
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
@@ -133,7 +133,7 @@ type QuestGroup = {
 // unfiltered, not every row in the store.
 const baseQuests = computed(() => (activeQuests.value ?? []).filter((q) => q.parentId == null));
 
-const visibleQuests = computed(() => filterByRank(baseQuests.value));
+const visibleQuests = computed(() => filterQuests(baseQuests.value));
 
 const questGroups = computed<QuestGroup[]>(() => {
   // Grouping runs on the filtered list, so a group whose every quest was filtered out

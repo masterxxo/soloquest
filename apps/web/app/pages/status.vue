@@ -90,6 +90,8 @@ const { loggingOut, onSignOut } = useSignOut();
         <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
       </section>
 
+      <TagManager />
+
       <!-- Account settings. Timezone drives the "required day" in ritual heatmaps and
            the daily cron, so it's functional, not cosmetic. Saved on change. -->
       <section>

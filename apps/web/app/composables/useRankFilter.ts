@@ -22,11 +22,16 @@ import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 //   ?rank=D      only D
 //   ?rank=D,A    D and A, in DIFFICULTY_ORDER order
 //
-// It also owns the list's second filter dimension, `?top=1` ("Hide sub-tasks"), which is a
-// different kind of narrowing: it removes no quest from the list, it switches off the
-// nested sub-task rendering inside each QuestCard. The two live together because "is any
-// filter on" and "Clear" span both — splitting them would mean every caller reassembling
-// those two answers by hand.
+// It also owns the list's other two filter dimensions, so "is any filter on" and "Clear"
+// span all of them from one place (splitting would make every caller reassemble the answer):
+//   - `?top=1` ("Hide sub-tasks") — a different kind of narrowing: it removes no quest from
+//     the list, it switches off the nested sub-task rendering inside each QuestCard.
+//   - `?tags=<id>,<id>` — an OR filter over the quest's pinned tags: a quest shows if it
+//     carries ANY selected tag. Empty selection = no tag filter. Combined with the ranks by
+//     AND (rank AND tags), like a proper multi-dimension filter.
+//
+// The name still says "rank" for continuity, but the composable now owns all three of the
+// quest list's filter dimensions.
 export function useRankFilter() {
   const route = useRoute();
   const router = useRouter();
@@ -51,23 +56,44 @@ export function useRankFilter() {
     return (Array.isArray(raw) ? raw[0] : raw) === '1';
   });
 
+  // Selected tag ids from `?tags=<id>,<id>`. Kept as raw ids (order as written, deduped);
+  // unlike the ranks there is no canonical order to impose, and an unknown id simply matches
+  // nothing rather than breaking the list.
+  const selectedTagIds = computed<string[]>(() => {
+    const raw = route.query.tags;
+    if (raw === undefined) return [];
+    const value = Array.isArray(raw) ? raw.join(',') : (raw ?? '');
+    return [...new Set(value.split(',').filter(Boolean))];
+  });
+
+  const selectedTagIdSet = computed(() => new Set(selectedTagIds.value));
+  const isTagSelected = (id: string) => selectedTagIdSet.value.has(id);
+  const isTagFiltered = computed(() => selectedTagIds.value.length > 0);
+
   // At least one chip lit. All six lit still counts: it shows the same quests as the
   // default, but it is a state the player built and can Clear back out of. This is what
   // gates the "Showing X of Y" readout — the ranks are the only dimension that moves those
   // two numbers.
   const isRankFiltered = computed(() => selectedRanks.value.length > 0);
 
-  // Any dimension on — what "Clear" hangs off. Broader than isRankFiltered on purpose:
-  // hiding sub-tasks is a state worth offering a way out of, even though it narrows no count.
-  const isFiltered = computed(() => isRankFiltered.value || hideSubTasks.value);
+  // Dimensions that actually narrow the quest count (ranks + tags), so they feed the
+  // "Showing X of Y" readout. Hiding sub-tasks is excluded on purpose — it removes no
+  // top-level quest, so it moves no count.
+  const isCountFiltered = computed(() => isRankFiltered.value || isTagFiltered.value);
 
-  // Both dimensions write through here, always from a full picture of the next state, so
-  // one can never clobber the other and clearing both stays a single navigation rather than
-  // two replace() calls racing over the same query object.
-  function writeFilters(next: { ranks: Difficulty[]; hideSubTasks: boolean }) {
+  // Any dimension on — what "Clear" hangs off. Broader than isCountFiltered on purpose:
+  // hiding sub-tasks is a state worth offering a way out of, even though it narrows no count.
+  const isFiltered = computed(() => isCountFiltered.value || hideSubTasks.value);
+
+  // Every dimension writes through here, always from a full picture of the next state, so
+  // one can never clobber another and clearing all stays a single navigation rather than
+  // several replace() calls racing over the same query object.
+  function writeFilters(next: { ranks: Difficulty[]; tagIds: string[]; hideSubTasks: boolean }) {
     const query = { ...route.query };
     if (!next.ranks.length) delete query.rank; // default → clean URL
     else query.rank = next.ranks.join(',');
+    if (!next.tagIds.length) delete query.tags;
+    else query.tags = next.tagIds.join(',');
     if (!next.hideSubTasks) delete query.top;
     else query.top = '1';
     // replace(), not push(): toggling a chip adjusts the current view, it isn't a place
@@ -75,38 +101,78 @@ export function useRankFilter() {
     router.replace({ query });
   }
 
+  function currentState() {
+    return {
+      ranks: selectedRanks.value,
+      tagIds: selectedTagIds.value,
+      hideSubTasks: hideSubTasks.value,
+    };
+  }
+
   function toggleRank(rank: Difficulty) {
     const ranks = isRankSelected(rank)
       ? selectedRanks.value.filter((r) => r !== rank)
       : DIFFICULTY_ORDER.filter((r) => r === rank || isRankSelected(r)); // keep canonical order
-    writeFilters({ ranks, hideSubTasks: hideSubTasks.value });
+    writeFilters({ ...currentState(), ranks });
+  }
+
+  function toggleTag(id: string) {
+    const tagIds = isTagSelected(id)
+      ? selectedTagIds.value.filter((t) => t !== id)
+      : [...selectedTagIds.value, id];
+    writeFilters({ ...currentState(), tagIds });
   }
 
   function toggleSubTasks() {
-    writeFilters({ ranks: selectedRanks.value, hideSubTasks: !hideSubTasks.value });
+    writeFilters({ ...currentState(), hideSubTasks: !hideSubTasks.value });
   }
 
   function clearFilter() {
-    writeFilters({ ranks: [], hideSubTasks: false });
+    writeFilters({ ranks: [], tagIds: [], hideSubTasks: false });
   }
 
-  // Narrows a list the caller already holds. Kept generic over `difficulty` so it stays a
-  // list filter rather than a quest filter, and left as a plain function: called from the
-  // caller's own computed, it tracks the URL through `selectedRanks` like any other read.
-  function filterByRank<T extends { difficulty: string }>(list: T[]): T[] {
-    if (!selectedRanks.value.length) return list; // nothing lit = no filter
-    return list.filter((item) => selectedRankSet.value.has(item.difficulty));
+  // Drop any `?tags=` id that isn't a real tag (e.g. a tag deleted while its id lingered in a
+  // bookmarked URL) so the player can't get stuck on an empty list filtered by an invisible,
+  // unnameable tag. Caller passes the set of known tag ids once its tags have loaded — until
+  // then this must not run, or it would wipe valid ids before the list arrives.
+  function pruneUnknownTags(knownIds: Set<string>) {
+    const kept = selectedTagIds.value.filter((id) => knownIds.has(id));
+    if (kept.length !== selectedTagIds.value.length) {
+      writeFilters({ ...currentState(), tagIds: kept });
+    }
+  }
+
+  // Narrows a list the caller already holds by the count dimensions (rank AND tags). Kept
+  // generic over the shape it reads (`difficulty`, `tags`) so it stays a list filter, and
+  // left a plain function: called from the caller's own computed, it tracks the URL through
+  // the `selected*` reads like any other reactive dependency.
+  function filterQuests<T extends { difficulty: string; tags?: { id: string }[] }>(list: T[]): T[] {
+    let out = list;
+    if (selectedRanks.value.length) {
+      out = out.filter((item) => selectedRankSet.value.has(item.difficulty));
+    }
+    if (selectedTagIds.value.length) {
+      // OR within tags: keep a quest if it carries ANY selected tag.
+      out = out.filter((item) => (item.tags ?? []).some((t) => selectedTagIdSet.value.has(t.id)));
+    }
+    return out;
   }
 
   return {
     selectedRanks,
     isRankSelected,
     isRankFiltered,
+    selectedTagIds,
+    isTagSelected,
+    isTagFiltered,
+    isCountFiltered,
     isFiltered,
     hideSubTasks,
     toggleRank,
+    toggleTag,
     toggleSubTasks,
     clearFilter,
-    filterByRank,
+    pruneUnknownTags,
+    filterQuests,
   };
 }

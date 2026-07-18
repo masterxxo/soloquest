@@ -20,6 +20,15 @@ export type Quest = InferResponseType<typeof client.api.quests.$get, 200>[number
 // rank warnings instead of a bare Quest.
 export type QuestWithWarnings = { quest: Quest; warnings: string[] };
 
+// ── Tags ────────────────────────────────────────────────────────────────────
+// A tag pinned to a quest, as it rides along on every quest row: just id + name (the wire
+// shape the list/create/update endpoints project). The filter and the card chips read this.
+export type QuestTag = NonNullable<Quest['tags']>[number];
+
+// GET /api/tags → the user's tags, each with a usageCount (how many quests pin it). Used by
+// the tag picker (search source), the filter bar (chips) and the Status tag manager.
+export type TagWithUsage = InferResponseType<typeof client.api.tags.$get, 200>[number];
+
 export type CompleteResult = InferResponseType<
   (typeof client.api.quests)[':id']['complete']['$post'],
   200

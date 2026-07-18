@@ -2,6 +2,7 @@ import { pgTable, uuid, text, integer, timestamp, index, type AnyPgColumn } from
 import { relations } from "drizzle-orm"
 import { user } from './auth'
 import { difficultyEnum, questStatusEnum } from './enums'
+import { questTags } from './tags'
 
 export const quests = pgTable('quests', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -55,6 +56,7 @@ export const questsRelations = relations(quests, ({ one, many }) => ({
   }),
   subTasks: many(quests, { relationName: 'questSubTasks' }),
   completions: many(questCompletions),
+  questTags: many(questTags),
 }));
 
 export const questCompletionsRelations = relations(questCompletions, ({ one }) => ({

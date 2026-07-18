@@ -2,6 +2,7 @@
 import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
 import { rankColor } from '~/lib/ranks';
+import { tagChipStyle } from '~/lib/tag-colors';
 import { formatDate } from '~/lib/date';
 
 const props = withDefaults(
@@ -84,6 +85,17 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
         <div class="flex gap-3 text-[0.75rem] text-ink-muted">
           <span class="font-semibold text-accent-light">+{{ quest.xpReward }} XP</span>
           <span v-if="deadlineLabel">⌛ {{ deadlineLabel }}</span>
+        </div>
+        <!-- Pinned tags: light chips in each tag's own colour, deliberately unlike the rank badge. -->
+        <div v-if="quest.tags?.length" class="mt-[0.35rem] flex flex-wrap gap-1">
+          <span
+            v-for="tag in quest.tags"
+            :key="tag.id"
+            class="inline-flex items-center rounded-[3px] border px-[0.4rem] py-[0.1rem] text-[0.7rem]"
+            :style="tagChipStyle(tag.color)"
+          >
+            {{ tag.name }}
+          </span>
         </div>
         <p v-if="errorMsg" class="mt-[0.4rem] text-[0.75rem] text-danger-bright">{{ errorMsg }}</p>
       </div>

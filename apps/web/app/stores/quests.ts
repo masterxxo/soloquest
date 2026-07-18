@@ -10,7 +10,9 @@ import {
 } from '~/lib/api-client';
 import { usePlayerStore } from '~/stores/player';
 import { useFeedbackStore } from '~/stores/feedback';
+import { useTagsStore } from '~/stores/tags';
 import { localDateString } from '~/lib/date';
+import type { TagColor } from '@soloquest/shared';
 
 // Single client-side cache for the per-user lists. It outlives individual pages (the
 // persistent grimoire layout + several routes all read the same arrays), and applies
@@ -119,6 +121,9 @@ export const useQuestsStore = defineStore('quests', {
       } else {
         this.activeQuests = [quest, ...this.activeQuests];
       }
+      // A new quest may pin tags (or the quick-add none) — either way a usageCount moved, so
+      // the tag counts on Status must refetch next time it opens.
+      useTagsStore().invalidate();
       useFeedbackStore().showWarnings(result.warnings);
     },
     // Completion: drop from the active list, apply server-authoritative player state,
@@ -127,6 +132,10 @@ export const useQuestsStore = defineStore('quests', {
     // just cascade-completed — so the just-closed children leave the board with it, and the
     // enriched player state already includes their XP.
     applyCompleted(result: CompleteResult) {
+      // Note: no tags invalidate() here. Completing (and its sub-task cascade) keeps the
+      // quest rows and their tag pins in the DB — it only drops them from the *active* list
+      // client-side — so usageCount (all quests, any status) is unchanged. Deliberate: see
+      // the usageCount semantics note in stores/tags.ts.
       this.dropQuestFromLists(result.quest.id);
       const player = usePlayerStore();
       player.applyProgress(result.player);
@@ -141,6 +150,8 @@ export const useQuestsStore = defineStore('quests', {
     },
     removeQuest(id: string) {
       this.dropQuestFromLists(id);
+      // Deleting a quest cascade-removes its tag pins, dropping those tags' usageCount.
+      useTagsStore().invalidate();
     },
     applyUpdated(result: QuestWithWarnings) {
       const updated = result.quest;
@@ -156,7 +167,37 @@ export const useQuestsStore = defineStore('quests', {
           subTasks: subTasks.map((st) => (st.id === updated.id ? { ...st, ...updated } : st)),
         };
       });
+      // An edit may have changed the quest's tag set (replace semantics), moving counts.
+      useTagsStore().invalidate();
       useFeedbackStore().showWarnings(result.warnings);
+    },
+
+    // ── Tags on quests ──────────────────────────────────────────────────────
+    // Keep the tag chips on already-loaded quest cards in step with tag rename/recolour/delete
+    // on the Status screen, without a full refetch. Each walks the top-level rows and their
+    // nested sub-tasks (the two places a quest's `tags` array lives in the cache).
+    renameTagEverywhere(id: string, name: string) {
+      const patch = (tags: Quest['tags']) =>
+        tags?.map((t) => (t.id === id ? { ...t, name } : t));
+      this.mapQuestTags(patch);
+    },
+    recolorTagEverywhere(id: string, color: TagColor) {
+      const patch = (tags: Quest['tags']) =>
+        tags?.map((t) => (t.id === id ? { ...t, color } : t));
+      this.mapQuestTags(patch);
+    },
+    removeTagEverywhere(id: string) {
+      const strip = (tags: Quest['tags']) => tags?.filter((t) => t.id !== id);
+      this.mapQuestTags(strip);
+    },
+    // Apply a tags transform to every quest and its sub-tasks. Shared by the three above so
+    // the top-level + nested walk lives in one place.
+    mapQuestTags(fn: (tags: Quest['tags']) => Quest['tags']) {
+      this.activeQuests = this.activeQuests.map((q) => ({
+        ...q,
+        tags: fn(q.tags),
+        ...(q.subTasks ? { subTasks: q.subTasks.map((st) => ({ ...st, tags: fn(st.tags) })) } : {}),
+      }));
     },
 
     // ── Recurring quests ────────────────────────────────────────────────────

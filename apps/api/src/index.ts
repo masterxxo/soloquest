@@ -7,6 +7,7 @@ import { sessionMiddleware, type Variables } from './middleware/auth';
 import { questsRouter } from './routes/quests';
 import { recurringQuestsRouter } from './routes/recurring-quests';
 import { userSettingsRouter } from './routes/user-settings';
+import { tagsRouter } from './routes/tags';
 import { startDailyCron } from './cron/daily-tick';
 
 const app = new Hono<{ Variables: Variables }>().basePath('/api');
@@ -39,7 +40,8 @@ app.get('/health', async (c) => {
 export const routes = app
   .route('/quests', questsRouter)
   .route('/recurring-quests', recurringQuestsRouter)
-  .route('/user', userSettingsRouter);
+  .route('/user', userSettingsRouter)
+  .route('/tags', tagsRouter);
 
 const port = Number(process.env.PORT ?? 3001);
 serve({ fetch: app.fetch, port });

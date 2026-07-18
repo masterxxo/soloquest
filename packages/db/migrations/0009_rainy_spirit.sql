@@ -1,0 +1,2 @@
+CREATE TYPE "public"."tag_color" AS ENUM('amethyst', 'iris', 'lavender', 'periwinkle', 'sapphire', 'cerulean', 'teal', 'jade', 'moss', 'amber', 'ember', 'rust', 'crimson', 'magenta', 'plum');--> statement-breakpoint
+ALTER TABLE "tags" ADD COLUMN "color" "tag_color" DEFAULT 'amethyst' NOT NULL;

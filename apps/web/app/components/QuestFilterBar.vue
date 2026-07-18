@@ -3,7 +3,8 @@ import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
 import { useRankFilter } from '~/composables/useRankFilter';
 import { rankColor } from '~/lib/ranks';
 
-// The rank chips and the "Showing X of Y · Clear" readout for the quest list.
+// The rank chips, the tag filter (a searchable popover — see QuestTagFilter), and the
+// "Showing X of Y · Clear" readout for the quest list.
 //
 // The filter state lives in the URL (useRankFilter), so this reads it straight from there
 // instead of taking it as props: passing it down would only make a second copy of
@@ -14,7 +15,7 @@ const props = defineProps<{
   total: number;
 }>();
 
-const { isRankSelected, isRankFiltered, isFiltered, hideSubTasks, toggleRank, toggleSubTasks, clearFilter } =
+const { isRankSelected, isCountFiltered, isFiltered, hideSubTasks, toggleRank, toggleSubTasks, clearFilter } =
   useRankFilter();
 
 // A lit chip *is* the rank badge from QuestCard (rank colour + glow); an unlit one keeps
@@ -37,7 +38,7 @@ function chipStyle(rank: Difficulty) {
 // alone.
 const summaryParts = computed(() => {
   const parts: string[] = [];
-  if (isRankFiltered.value) parts.push(`Showing ${props.shown} of ${props.total}`);
+  if (isCountFiltered.value) parts.push(`Showing ${props.shown} of ${props.total}`);
   if (hideSubTasks.value) parts.push('Sub-tasks hidden');
   return parts;
 });
@@ -59,6 +60,10 @@ const summaryParts = computed(() => {
         {{ rank }}
       </button>
     </div>
+
+    <!-- Tags: OR filter over the quest's pinned tags, in a searchable popover so the bar
+         scales past a handful of tags. Selected tags surface as chips beside its button. -->
+    <QuestTagFilter />
 
     <button
       type="button"
