@@ -220,4 +220,36 @@ describe('tags', () => {
     const after = await listUserTags(db, USER);
     expect(after.find((t) => t.id === tag.id)!.usageCount).toBe(1);
   });
+
+  it('11. a new tag after a recolour keeps its own deterministic colour (no leak)', async () => {
+    // The exact bug sequence, driven the way the app does it: on-the-fly creation posts a name
+    // with NO colour, so at this boundary that is createOrGetTag(db, user, name) — color absent.
+    await seedUser(db, USER);
+
+    const a = await createOrGetTag(db, USER, 'alpha'); // picker create — no colour
+    expect(a.color).toBe(tagColorForName('alpha'));
+
+    // User recolours A to something that is neither A's nor B's deterministic colour.
+    const forced: (typeof TAG_COLORS)[number] = 'crimson';
+    expect(forced).not.toBe(tagColorForName('alpha'));
+    expect(forced).not.toBe(tagColorForName('beta'));
+    await updateTag(db, USER, a.id, { color: forced });
+
+    const b = await createOrGetTag(db, USER, 'beta'); // picker create — no colour
+    // B must derive its OWN colour from its name, not inherit A's forced colour.
+    expect(b.color).toBe(tagColorForName('beta'));
+    expect(b.color).not.toBe(forced);
+  });
+
+  it('12. recolouring one tag never touches another tag', async () => {
+    await seedUser(db, USER);
+    const a = await createOrGetTag(db, USER, 'alpha');
+    const b = await createOrGetTag(db, USER, 'beta');
+    const bColorBefore = b.color;
+
+    await updateTag(db, USER, a.id, { color: 'crimson' });
+
+    const [bAfter] = await db.select().from(tags).where(eq(tags.id, b.id));
+    expect(bAfter!.color).toBe(bColorBefore);
+  });
 });
