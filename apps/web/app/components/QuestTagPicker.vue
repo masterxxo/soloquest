@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia';
 import { useTagsStore } from '~/stores/tags';
 import { useTagCombobox } from '~/composables/useTagCombobox';
+import { useAnchoredList } from '~/composables/useAnchoredList';
 import { normalizeTagName, TAG_NAME_MAX_LENGTH } from '@soloquest/shared';
 import { tagChipStyle, tagSwatchStyle } from '~/lib/tag-colors';
 import type { QuestTag } from '~/lib/api-client';
@@ -19,6 +20,7 @@ onMounted(() => { tagsStore.load(); });
 const query = ref('');
 const creating = ref(false);
 const inputEl = ref<HTMLInputElement | null>(null);
+const fieldEl = ref<HTMLElement | null>(null);
 const listboxId = useId();
 
 const selectedIds = computed(() => new Set(selected.value.map((t) => t.id)));
@@ -99,13 +101,24 @@ function onBlur() {
   open.value = false;
 }
 
+// The list is a fixed-position layer teleported to <body>, anchored to the field box — so
+// opening it never grows the form/modal, and the modal body's overflow can't clip it.
+const { anchoredStyle } = useAnchoredList(fieldEl, open);
+
 const optionId = (i: number) => `${listboxId}-opt-${i}`;
+
+// Keep the highlighted option visible as the arrow keys move it past the list's own scroll.
+watch(activeIndex, (i) => {
+  if (!open.value || !import.meta.client) return;
+  nextTick(() => document.getElementById(optionId(i))?.scrollIntoView({ block: 'nearest' }));
+});
 </script>
 
 <template>
   <div class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
     <span :id="`${listboxId}-label`">Tags</span>
     <div
+      ref="fieldEl"
       class="flex flex-wrap items-center gap-[0.35rem] rounded-none border border-line bg-panel px-[0.5rem] py-[0.4rem] focus-within:border-accent focus-within:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
       @click="inputEl?.focus()"
     >
@@ -148,14 +161,19 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
       />
     </div>
 
-    <!-- Suggestion list. Positioned in-flow (not absolute) so it can't be clipped by the
-         modal's scroll container; the form is short enough that this reads fine. -->
-    <ul
-      v-if="open && options.length"
-      :id="listboxId"
-      role="listbox"
-      class="m-0 flex list-none flex-col gap-[1px] border border-line bg-[rgba(8,5,20,0.98)] p-[0.2rem]"
-    >
+    <!-- Suggestion list. Teleported to <body> and fixed-positioned (via useAnchoredList) so it
+         layers over the modal instead of growing it, and the modal body's overflow can't clip
+         it. z-[55] sits above the modal (z-50) and below toasts (z-60). Its own scroll caps the
+         height; the flip and width come from the anchored style. -->
+    <Teleport to="body">
+      <ul
+        v-if="open && options.length"
+        :id="listboxId"
+        role="listbox"
+        :style="anchoredStyle"
+        class="z-[55] m-0 flex list-none flex-col gap-[1px] overflow-y-auto border border-line bg-[rgba(8,5,20,0.98)] p-[0.2rem] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+        @mousedown.prevent
+      >
       <li
         v-for="(option, i) in options"
         :id="optionId(i)"
@@ -175,6 +193,7 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
           <span class="text-ink-dim">Create</span> "{{ option.label }}"
         </template>
       </li>
-    </ul>
+      </ul>
+    </Teleport>
   </div>
 </template>
