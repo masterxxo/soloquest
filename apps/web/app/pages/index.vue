@@ -11,7 +11,7 @@ import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
 import { useEntityModals } from '~/composables/useEntityModals';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
-import { useRankFilter } from '~/composables/useRankFilter';
+import { useQuestFilters } from '~/composables/useQuestFilters';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
@@ -115,10 +115,10 @@ useKeyboardShortcuts([
 ]);
 
 // ── Rank filter ─────────────────────────────────────────────────────────────────
-// The state and its URL encoding live in useRankFilter; the chips live in QuestFilterBar
+// The state and its URL encoding live in useQuestFilters; the chips live in QuestFilterBar
 // (which reads the same composable). The page keeps only what is genuinely its own: the
 // list to narrow, and clearing from its own empty state.
-const { filterQuests, clearFilter, hideSubTasks } = useRankFilter();
+const { filterQuests, clearFilter, hideSubTasks } = useQuestFilters();
 
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {

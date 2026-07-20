@@ -156,6 +156,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
           title: input.title,
           description: input.description,
           difficulty: input.difficulty,
+          priority: input.priority,
           xpReward: XP_REWARDS[input.difficulty],
           deadline: input.deadline,
           parentId: input.parentId,

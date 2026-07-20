@@ -149,13 +149,27 @@ All of the following exist, are used, and are meant to stay:
   are skipped (idempotent — no double XP, no duplicate log). The `/complete` response carries
   `cascadedCompletions: number`, and `leveledUp`/player state are computed after the whole
   cascade so a level-up reached only by the summed XP isn't lost.
-- A rank filter on the quest list (`useRankFilter` + `QuestFilterBar`), entirely
+- A rank filter on the quest list (`useQuestFilters` + `QuestFilterBar`), entirely
   client-side over the already-loaded array — it narrows the deadline grouping, it never
   reaches the API. It is **additive**: the
   chips start unlit and each lit rank *adds* its quests, so an empty selection means "no
   filter" (the whole board), never "hide everything". The selection lives in the URL
   (no param = nothing lit; `?rank=D,A` = only those), written with `router.replace`, so a
-  refresh keeps it and a fresh `/` from the nav resets it.
+  refresh keeps it and a fresh `/` from the nav resets it. (`useQuestFilters` — renamed from
+  `useRankFilter` once it grew past ranks — owns every quest-list filter dimension: rank,
+  priority, tags and "Hide sub-tasks".)
+- **Quest priority** — `low` / `normal` / `high` (default `normal`), expressing importance
+  independent of the deadline. Canonical tuple `QUEST_PRIORITY` in `@soloquest/shared/enums`
+  (⚠️ ascending, append-only like every enum) → `pgEnum` (`quest_priority`) → `z.enum` →
+  front, exactly the `difficulty` pattern. Column `priority` on `quests` is **NOT NULL
+  DEFAULT `'normal'`**. It is a **card marker + filter dimension only — it never sorts the
+  list** (deadline grouping stays the sole ordering). The marker is a chevron (`priority.ts`:
+  `▲` gold for high, `▼` dimmed for low; **`normal` renders nothing**) beside the title in
+  `QuestCard`, shown for all three in `QuestDetail`; `QuestForm` sets it with a segmented
+  control; the filter is glyph chips in `QuestFilterBar` (`?priority=` in the URL, additive
+  OR, AND-ed with the other dimensions). The create Zod field is `.optional()` **without** a
+  Zod default (the DB column supplies `normal`) — a `.default()` would leak through
+  `updateQuestSchema.partial()` and make an unrelated PATCH reset priority.
 - Recurring quests — surfaced in the UI as **"Rituals"** — with streaks and a completion
   calendar.
 - `quest_completions`: an append-only event log of completions, kept independently of the
@@ -178,7 +192,7 @@ All of the following exist, are used, and are meant to stay:
   [{id,name,color}]` through one batched relational query (no N+1), and quest POST/PATCH take
   `tagIds` (ownership-checked, capped at `MAX_TAGS_PER_QUEST`, **replace** semantics on PATCH).
   The quest form has a Todoist-style combobox (`QuestTagPicker`), the quest list a client-side
-  **OR** tag filter in a searchable popover (`QuestTagFilter`, folded into `useRankFilter`,
+  **OR** tag filter in a searchable popover (`QuestTagFilter`, folded into `useQuestFilters`,
   `?tags=` in the URL — unknown ids are pruned from the URL on load), and Status a
   rename/recolour/delete manager (`TagManager`).
   - **Colours: the DB stores the palette KEY, never a hex.** The canonical 15-key palette
@@ -230,7 +244,7 @@ All of the following exist, are used, and are meant to stay:
   quest's `subTasks` indented under it. That nested rendering is the real, hideable surface,
   and the **"Hide sub-tasks"** filter (`?top=1`) targets exactly it — it toggles
   `QuestCard`'s `showSubTasks` prop, collapsing the nested block, and removes no quest from
-  the list. It lives in `useRankFilter` alongside the ranks (so "is any filter on" and
+  the list. It lives in `useQuestFilters` alongside the ranks (so "is any filter on" and
   "Clear" span both dimensions) and, because it narrows no count, deliberately does **not**
   feed "Showing X of Y" — it shows its own "Sub-tasks hidden" note instead.
 - **Tags stay v1-scoped on purpose.** Deliberately *not* built (do not add without a new
@@ -239,6 +253,12 @@ All of the following exist, are used, and are meant to stay:
   `#`-autocomplete in the title. Colours exist but the picker does *not* offer a colour at
   on-the-fly create time (deterministic default + recolour on Status instead — keeps the
   combobox simple). Tags stay `recurring`-free and are a quest-only concern.
+- **Priority stays v1-scoped, and it never sorts.** It is a marker + filter, full stop —
+  the deadline grouping is the only ordering, and adding a priority sort (within or between
+  groups) is a new decision, not a tweak. Deliberately *not* built (do not add without a new
+  decision): priority in the `quest_completions` snapshot / Chronicles (a conscious debt, like
+  tags), priority on rituals, inheritance by sub-tasks, and a keyboard shortcut to set it. On
+  the card, **`normal` renders no marker** on purpose — only high/low get a glyph.
 - **No squashing of Drizzle migrations.** The history stands.
 - **Rank auto-derivation from sub-tasks is frozen** on purpose; the rank check only ever
   produces a non-blocking warning.

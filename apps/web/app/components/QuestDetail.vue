@@ -2,6 +2,7 @@
 import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
 import { rankColor } from '~/lib/ranks';
+import { PRIORITY_STYLES } from '~/lib/priority';
 import { formatDate } from '~/lib/date';
 
 const props = defineProps<{
@@ -22,6 +23,8 @@ const deadlineLabel = computed(() =>
 );
 const createdLabel = computed(() => formatDate(props.quest.createdAt));
 const subCount = computed(() => props.quest.subTasks?.length ?? 0);
+// Detail view is an explicit facts panel, so priority shows for all three levels here.
+const priority = computed(() => PRIORITY_STYLES[props.quest.priority]);
 
 const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(
   () => props.quest,
@@ -113,6 +116,11 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
               >
                 {{ quest.difficulty }}
               </span>
+            </dd>
+            <dt class="text-[0.78rem] text-ink-muted">Priority</dt>
+            <dd class="m-0 flex items-center justify-end gap-[0.35rem] text-[0.85rem] text-ink">
+              <span class="leading-none" :class="priority.klass" aria-hidden="true">{{ priority.glyph }}</span>
+              {{ priority.short }}
             </dd>
             <dt class="text-[0.78rem] text-ink-muted">Status</dt>
             <dd class="m-0 text-right text-[0.85rem] capitalize text-ink">{{ quest.status }}</dd>

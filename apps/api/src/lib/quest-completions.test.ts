@@ -10,6 +10,7 @@ const quest: Quest = {
   description: 'A long overdue errand',
   difficulty: 'A',
   status: 'active',
+  priority: 'normal',
   xpReward: 250,
   deadline: null,
   completedAt: null,

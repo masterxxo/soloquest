@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useTagsStore } from '~/stores/tags';
-import { useRankFilter } from '~/composables/useRankFilter';
+import { useQuestFilters } from '~/composables/useQuestFilters';
 import { useTagCombobox } from '~/composables/useTagCombobox';
 import { tagChipStyle, tagSwatchStyle } from '~/lib/tag-colors';
 import type { TagWithUsage } from '~/lib/api-client';
@@ -16,7 +16,7 @@ const tagsStore = useTagsStore();
 const { sortedTags } = storeToRefs(tagsStore);
 onMounted(() => { tagsStore.load(); });
 
-const { selectedTagIds, isTagSelected, toggleTag, pruneUnknownTags } = useRankFilter();
+const { selectedTagIds, isTagSelected, toggleTag, pruneUnknownTags } = useQuestFilters();
 
 const knownIds = computed(() => new Set(sortedTags.value.map((t) => t.id)));
 

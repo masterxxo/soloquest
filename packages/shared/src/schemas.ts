@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DIFFICULTY_ORDER, QUEST_STATUS, TAG_COLORS } from "./enums";
+import { DIFFICULTY_ORDER, QUEST_STATUS, QUEST_PRIORITY, TAG_COLORS } from "./enums";
 
 // Tag name limits and the per-quest tag cap — enforced by the backend, mirrored in the UI.
 export const TAG_NAME_MAX_LENGTH = 32;
@@ -16,6 +16,12 @@ export const createQuestSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().min(1),
   difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
+  // Optional, and deliberately WITHOUT a Zod default (unlike difficulty): omitted on create →
+  // the DB column's NOT NULL DEFAULT 'normal' fills it. A schema `.default()` here would leak
+  // through `updateQuestSchema`'s `.partial()` and make every PATCH (e.g. a title-only edit)
+  // silently reset priority to 'normal'. Following the `tagIds` optional pattern keeps a PATCH
+  // that omits priority a genuine no-op on it, and a present value is written as sent.
+  priority: z.enum(QUEST_PRIORITY).optional(),
   deadline: z.coerce.date().nullable().optional(), // null = clear the deadline
   parentId: z.string().uuid().nullable().optional(), // null = promote to top-level quest
   // Full set of tag ids to pin (replace semantics on PATCH). Omitted = leave tags as they

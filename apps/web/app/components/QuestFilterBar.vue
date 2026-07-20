@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
-import { useRankFilter } from '~/composables/useRankFilter';
+import { useQuestFilters } from '~/composables/useQuestFilters';
 import { rankColor } from '~/lib/ranks';
+import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES } from '~/lib/priority';
 
 // The rank chips, the tag filter (a searchable popover — see QuestTagFilter), and the
 // "Showing X of Y · Clear" readout for the quest list.
@@ -15,8 +16,17 @@ const props = defineProps<{
   total: number;
 }>();
 
-const { isRankSelected, isCountFiltered, isFiltered, hideSubTasks, toggleRank, toggleSubTasks, clearFilter } =
-  useRankFilter();
+const {
+  isRankSelected,
+  isPrioritySelected,
+  togglePriority,
+  isCountFiltered,
+  isFiltered,
+  hideSubTasks,
+  toggleRank,
+  toggleSubTasks,
+  clearFilter,
+} = useQuestFilters();
 
 // A lit chip *is* the rank badge from QuestCard (rank colour + glow); an unlit one keeps
 // the shape and the letter but falls back to a muted outline via classes, so "off" reads
@@ -59,6 +69,28 @@ const summaryParts = computed(() => {
       >
         {{ rank }}
       </button>
+    </div>
+
+    <!-- Priority: glyph chips (▲ ─ ▼), same additive OR semantics as the ranks. Glyphs
+         rather than words so three more chips don't turn the bar into a wall of text. The
+         divider is glued to the chips (one flex unit) so that when the bar wraps on a narrow
+         screen it travels with them instead of stranding a floating rule at a line edge. -->
+    <div class="flex items-center gap-2">
+      <span class="h-6 w-px flex-none bg-line" aria-hidden="true" />
+      <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by priority">
+        <button
+          v-for="p in PRIORITY_DISPLAY_ORDER"
+          :key="p"
+          type="button"
+          :aria-pressed="isPrioritySelected(p)"
+          :aria-label="PRIORITY_STYLES[p].label"
+          class="grid h-7 w-7 cursor-pointer place-items-center rounded-none border bg-panel text-[0.9rem] font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
+          :class="isPrioritySelected(p) ? [PRIORITY_STYLES[p].klass, 'border-current [text-shadow:0_0_6px_currentColor]'] : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
+          @click="togglePriority(p)"
+        >
+          {{ PRIORITY_STYLES[p].glyph }}
+        </button>
+      </div>
     </div>
 
     <!-- Tags: OR filter over the quest's pinned tags, in a searchable popover so the bar

@@ -3,7 +3,8 @@ import { storeToRefs } from 'pinia';
 import { client, type Quest, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
 import { localDateString } from '~/lib/date';
-import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
+import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty, type QuestPriority } from '@soloquest/shared';
+import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES } from '~/lib/priority';
 
 const props = withDefaults(
   defineProps<{ mode?: 'create' | 'edit'; initial?: Quest | null }>(),
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 const title = ref('');
 const description = ref('');
 const difficulty = ref<Difficulty>('E');
+const priority = ref<QuestPriority>('normal'); // default on create
 const deadline = ref(''); // yyyy-mm-dd from <input type="date">
 const parentId = ref(''); // '' = None (sent as null)
 const selectedTags = ref<QuestTag[]>([]); // tag pins, sent as tagIds
@@ -50,6 +52,7 @@ watch(
     title.value = q?.title ?? '';
     description.value = q?.description ?? '';
     difficulty.value = q?.difficulty ?? 'E';
+    priority.value = q?.priority ?? 'normal';
     deadline.value = q?.deadline ? toDateInput(q.deadline) : '';
     parentId.value = q?.parentId ?? '';
     selectedTags.value = q?.tags ? q.tags.map((t) => ({ ...t })) : [];
@@ -63,6 +66,7 @@ async function onCreate() {
       title: title.value,
       description: description.value,
       difficulty: difficulty.value,
+      priority: priority.value,
       // Date or null (empty = no deadline). hc serialises the Date to ISO; null stays
       // null. Never send "" — z.coerce.date() would choke on it.
       deadline: deadline.value ? new Date(deadline.value) : null,
@@ -80,6 +84,7 @@ async function onCreate() {
   title.value = '';
   description.value = '';
   difficulty.value = 'E';
+  priority.value = 'normal';
   deadline.value = '';
   parentId.value = '';
   selectedTags.value = [];
@@ -92,6 +97,7 @@ async function onEdit() {
     title?: string;
     description?: string;
     difficulty?: Difficulty;
+    priority?: QuestPriority;
     deadline?: Date | null;
     parentId?: string | null;
     tagIds?: string[];
@@ -99,6 +105,7 @@ async function onEdit() {
   if (title.value !== initial.title) changes.title = title.value;
   if (description.value !== (initial.description ?? '')) changes.description = description.value;
   if (difficulty.value !== initial.difficulty) changes.difficulty = difficulty.value;
+  if (priority.value !== initial.priority) changes.priority = priority.value;
   const initialDeadline = initial.deadline ? toDateInput(initial.deadline) : '';
   // Empty now → null (clear it); set/changed → Date; unchanged → omit.
   if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
@@ -180,6 +187,26 @@ async function onSubmit() {
     </div>
 
     <p v-for="(w, i) in localWarnings" :key="i" class="m-0 text-[0.78rem] text-gold">⚠ {{ w }}</p>
+
+    <!-- Priority: a segmented control (native buttons → keyboard-accessible), matching the
+         card marker's glyphs. Default 'normal' on create. One compact row, not a section. -->
+    <div class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
+      <span>Priority</span>
+      <div role="group" aria-label="Priority" class="grid grid-cols-3 gap-[0.3rem]">
+        <button
+          v-for="p in PRIORITY_DISPLAY_ORDER"
+          :key="p"
+          type="button"
+          :aria-pressed="priority === p"
+          class="flex items-center justify-center gap-[0.35rem] rounded-none border px-[0.5rem] py-[0.4rem] text-[0.8rem] font-semibold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
+          :class="priority === p ? 'border-accent bg-accent/15 text-ink' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
+          @click="priority = p"
+        >
+          <span :class="PRIORITY_STYLES[p].klass" aria-hidden="true">{{ PRIORITY_STYLES[p].glyph }}</span>
+          {{ PRIORITY_STYLES[p].short }}
+        </button>
+      </div>
+    </div>
 
     <label class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
       Parent quest

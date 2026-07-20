@@ -71,6 +71,13 @@
       "when": 1784390686060,
       "tag": "0009_rainy_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784531591811,
+      "tag": "0010_glossy_gladiator",
+      "breakpoints": true
     }
   ]
 }

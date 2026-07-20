@@ -18,6 +18,13 @@ export const RECURRENCE_TYPE = ['daily', 'every_x_days', 'weekdays'] as const;
 // Achievement category: streak-based (consecutive days) or total-based (lifetime completions).
 export const ACHIEVEMENT_TYPE = ['streak', 'total'] as const;
 
+// Quest priority — importance independent of the deadline ("this matters", even with no
+// date). It is a card marker and a filter dimension only; it deliberately does NOT sort the
+// list (deadline grouping stays the sole ordering). ⚠️ Order is canonical and ascending
+// (low < normal < high), which leaves the door open to a future sort without an ALTER TYPE —
+// like every enum here, appending is fine, reordering/removing is forbidden. Default: 'normal'.
+export const QUEST_PRIORITY = ['low', 'normal', 'high'] as const;
+
 // Canonical tag-colour palette: 15 keys tuned for the dark ground (#0a0618) and the accent
 // (#7c5ce8). The DATABASE stores the KEY, never the hex — so re-tuning a shade or adding a
 // theme is a code change, not a data migration. Like every other enum here this feeds a
@@ -45,6 +52,7 @@ export type Difficulty = (typeof DIFFICULTY_ORDER)[number];
 export type QuestStatus = (typeof QUEST_STATUS)[number];
 export type RecurrenceType = (typeof RECURRENCE_TYPE)[number];
 export type AchievementType = (typeof ACHIEVEMENT_TYPE)[number];
+export type QuestPriority = (typeof QUEST_PRIORITY)[number];
 export type TagColor = (typeof TAG_COLORS)[number];
 
 // The single place a colour key becomes a concrete hex. Every layer (chips, swatches,

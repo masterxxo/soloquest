@@ -1,7 +1,7 @@
 import { pgTable, uuid, text, integer, timestamp, index, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 import { user } from './auth'
-import { difficultyEnum, questStatusEnum } from './enums'
+import { difficultyEnum, questStatusEnum, questPriorityEnum } from './enums'
 import { questTags } from './tags'
 
 export const quests = pgTable('quests', {
@@ -13,6 +13,9 @@ export const quests = pgTable('quests', {
   description: text('description'),
   difficulty: difficultyEnum('difficulty').notNull().default('E'),
   status: questStatusEnum('status').notNull().default('active'),
+  // Importance independent of the deadline. Marker + filter only — never sorts the list.
+  // NOT NULL DEFAULT keeps existing rows valid without a backfill.
+  priority: questPriorityEnum('priority').notNull().default('normal'),
   xpReward: integer('xp_reward').notNull(),
   deadline: timestamp('deadline'),
   completedAt: timestamp('completed_at'),

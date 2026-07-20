@@ -2,6 +2,7 @@
 import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
 import { rankColor } from '~/lib/ranks';
+import { priorityMarker } from '~/lib/priority';
 import { tagChipStyle } from '~/lib/tag-colors';
 import { formatDate } from '~/lib/date';
 
@@ -42,6 +43,9 @@ const isActive = computed(() => props.quest.status === 'active');
 
 const color = computed(() => rankColor(props.quest.difficulty));
 
+// High/low get a chevron beside the title; normal renders nothing (marker === null).
+const marker = computed(() => priorityMarker(props.quest.priority));
+
 const deadlineLabel = computed(() =>
   props.quest.deadline ? formatDate(props.quest.deadline) : null,
 );
@@ -63,7 +67,17 @@ const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions
       </span>
 
       <div class="min-w-0 flex-auto">
-        <h3 class="m-0 text-[0.95rem] text-ink-soft">
+        <h3 class="m-0 flex items-baseline gap-[0.4rem] text-[0.95rem] text-ink-soft">
+          <!-- Priority marker: a small chevron in a different form from the rank badge, so it
+               reads as its own kind of signal. Only high/low render; normal shows nothing. -->
+          <span
+            v-if="marker"
+            class="flex-none text-[0.8rem] leading-none"
+            :class="marker.klass"
+            :title="marker.label"
+            :aria-label="marker.label"
+            role="img"
+          >{{ marker.glyph }}</span>
           <button
             v-if="openable"
             type="button"
