@@ -217,6 +217,19 @@ export const useQuestsStore = defineStore('quests', {
           : rq,
       );
     },
+    // A backfilled *past* day: fold in the refreshed streak counters and player XP, but —
+    // unlike applyRecurringCompleted — leave isCompletedToday alone. Backfill only ever
+    // targets a missed earlier day (today is never "missed"), so today's flag is untouched.
+    applyRecurringBackfilled(result: RecurringCompleteResult) {
+      const player = usePlayerStore();
+      player.applyProgress(result.player);
+      if (result.leveledUp) useFeedbackStore().showLevelUp(result.player.level);
+      this.recurringQuests = this.recurringQuests.map((rq) =>
+        rq.id === result.completion.recurringQuestId
+          ? { ...rq, streak: rq.streak ? { ...rq.streak, ...result.streak } : rq.streak }
+          : rq,
+      );
+    },
     removeRecurring(id: string) {
       this.recurringQuests = this.recurringQuests.filter((rq) => rq.id !== id);
     },

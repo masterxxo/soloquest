@@ -1,10 +1,19 @@
 <script setup lang="ts">
+import { MAX_BACKFILL_DAYS } from '@soloquest/shared';
 import type { RecurringCalendarDay } from '~/lib/api-client';
 
 // Completion calendar (GitHub-style heatmap). The backend is the source of truth for each
-// day's status (the `calendar` field from /stats) — here we only lay days out into weekly
-// columns and paint them.
-const props = defineProps<{ calendar: RecurringCalendarDay[] }>();
+// day's status (the `calendar` field from /stats) — here we lay days out into weekly
+// columns, paint them, and make a due-but-missed day inside the backfill window clickable
+// so the player can mark it done after the fact.
+const props = defineProps<{
+  calendar: RecurringCalendarDay[];
+  // Date currently being backfilled (in flight), so its cell can show a pending state.
+  pendingDate?: string | null;
+  // True while any completion for this ritual is in flight — suppresses new clicks.
+  disabled?: boolean;
+}>();
+const emit = defineEmits<{ backfill: [date: string] }>();
 
 type Status = RecurringCalendarDay['status'];
 
@@ -118,14 +127,49 @@ function cellClass(cell: Cell): string {
   if (!cell.date) return 'bg-transparent'; // padding before the window
   if (cell.future) return NOT_SCHEDULED_CLASS; // future filler — no "today" ring
   const base = cell.status ? STATUS_CLASS[cell.status] : NOT_SCHEDULED_CLASS;
-  return cell.isToday ? `${base} ring-1 ring-accent-soft` : base;
+  const parts = [cell.isToday ? `${base} ring-1 ring-accent-soft` : base];
+  if (cell.date === props.pendingDate) parts.push('animate-pulse ring-1 ring-accent-soft');
+  else if (isClickable(cell)) parts.push('cursor-pointer hover:brightness-150 hover:ring-1 hover:ring-accent-soft');
+  return parts.join(' ');
 }
 function cellTitle(cell: Cell): string {
   if (!cell.date) return '';
   const [, m, d] = cell.date.split('-');
   // Future (filler) days have no status — show just the date, without a misleading label.
   if (cell.future || !cell.status) return `${d}.${m}`;
-  return `${d}.${m} — ${STATUS_LABEL[cell.status]}`;
+  const base = `${d}.${m} — ${STATUS_LABEL[cell.status]}`;
+  return isClickable(cell) ? `${base} · Click to mark as done` : base;
+}
+
+// Oldest day still inside the backfill window: today − MAX_BACKFILL_DAYS. Today is the
+// calendar's last cell (the backend never returns future days). A missed day is clickable
+// when it is on/after that bound — mirrors the server's isWithinBackfillWindow exactly.
+const lastCalendarDate = computed(() => props.calendar.at(-1)?.date ?? null);
+const earliestBackfill = computed(() =>
+  lastCalendarDate.value
+    ? formatUtc(new Date(parseUtc(lastCalendarDate.value).getTime() - MAX_BACKFILL_DAYS * MS_PER_DAY))
+    : null,
+);
+
+// Only a *missed* day (a closed, required, uncompleted day — never today, done, future or
+// not-scheduled) can be backfilled, and only within the window.
+function isClickable(cell: Cell): boolean {
+  return (
+    !props.disabled &&
+    cell.status === 'missed' &&
+    cell.date !== null &&
+    earliestBackfill.value !== null &&
+    cell.date >= earliestBackfill.value
+  );
+}
+function cellAriaLabel(cell: Cell): string {
+  if (!cell.date) return '';
+  if (cell.future || !cell.status) return cell.date;
+  const state = isClickable(cell) ? 'missed, mark as done' : STATUS_LABEL[cell.status].toLowerCase();
+  return `${cell.date}: ${state}`;
+}
+function onCellClick(cell: Cell): void {
+  if (isClickable(cell) && cell.date) emit('backfill', cell.date);
 }
 </script>
 
@@ -149,13 +193,27 @@ function cellTitle(cell: Cell): string {
         </div>
 
         <div v-for="(week, wi) in weeks" :key="wi" class="flex flex-col gap-[3px]">
-          <div
-            v-for="(cell, ri) in week.cells"
-            :key="ri"
-            class="h-3 w-3 rounded-[2px]"
-            :class="cellClass(cell)"
-            :title="cellTitle(cell)"
-          />
+          <template v-for="(cell, ri) in week.cells" :key="ri">
+            <!-- A due-but-missed day inside the backfill window: a real button so it's
+                 reachable by keyboard and announced with its date + state. -->
+            <button
+              v-if="isClickable(cell)"
+              type="button"
+              class="h-3 w-3 rounded-[2px] border-0 p-0"
+              :class="cellClass(cell)"
+              :title="cellTitle(cell)"
+              :aria-label="cellAriaLabel(cell)"
+              :disabled="disabled"
+              @click="onCellClick(cell)"
+            />
+            <!-- Every other day: display only. -->
+            <div
+              v-else
+              class="h-3 w-3 rounded-[2px]"
+              :class="cellClass(cell)"
+              :title="cellTitle(cell)"
+            />
+          </template>
         </div>
       </div>
     </div>

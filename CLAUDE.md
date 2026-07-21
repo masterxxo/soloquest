@@ -133,6 +133,15 @@ packages/eslint-config Shared flat config + the language rule
 12. **Errors have one shape:** `{ error: string }`. Import `zValidator` from `lib/validate`
     (the wrapper that flattens Zod errors into that shape), never from `@hono/zod-validator`
     directly.
+13. **A ritual's streak is recalculated, never incremented.** Every completion recomputes
+    `current` / `longest` / `total` from the *full* completion set via `recalculateStreak`,
+    using the **same `wasRequiredOn` predicate** as the cron (`selectStreaksToReset`) and the
+    heatmap (`buildRecurringCalendar`) — one due-day rule for all three, so they cannot drift.
+    `current` = the run of consecutive *required* days each holding a completion, ending at the
+    most recent required day; **today, if required but not yet done, is "in progress"** — it
+    neither extends nor breaks the streak (mirrors the cron judging only closed days). `longest`
+    is floored at the stored value so a recompute can never lower a past record. Incremental
+    streak updates were removed because they cannot rejoin a gap filled in the middle of a run.
 
 ---
 
@@ -171,7 +180,16 @@ All of the following exist, are used, and are meant to stay:
   Zod default (the DB column supplies `normal`) — a `.default()` would leak through
   `updateQuestSchema.partial()` and make an unrelated PATCH reset priority.
 - Recurring quests — surfaced in the UI as **"Rituals"** — with streaks and a completion
-  calendar.
+  calendar. A **due-but-missed day can be backfilled** (completed after the fact) up to
+  `MAX_BACKFILL_DAYS` (7) days back, in the user's timezone: the heatmap's missed cells in
+  that window are clickable (keyboard-reachable), each POSTing its own date to the *same*
+  `/complete` endpoint. "Complete today" and "backfill a past day" are **one path**
+  (`completeRecurringQuestForDate`): one date arg, one atomic transaction, one flat
+  `RECURRING_XP_REWARD`. The endpoint rejects (in the user's timezone) a day that is not due
+  (`wasRequiredOn`), in the future, before the ritual existed, or older than the window; an
+  already-completed day reuses the existing **409** (the `UNIQUE(quest, date)` constraint
+  arbitrates, so no double XP). The streak is **recalculated from the full completion set**
+  after every completion (see decision 13) — that is what lets a filled gap rejoin a run.
 - `quest_completions`: an append-only event log of completions, kept independently of the
   quests themselves.
 - **Chronicles** — a read-only history view of completed quests (stats + a 30-day daily-XP

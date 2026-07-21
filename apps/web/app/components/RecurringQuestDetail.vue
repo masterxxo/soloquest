@@ -10,11 +10,12 @@ import { rankColor } from '~/lib/ranks';
 import { recurrenceLabel } from '~/lib/recurrence';
 import { formatDate } from '~/lib/date';
 import { useRecurringQuestActions } from '~/composables/useRecurringQuestActions';
-import { RECURRING_XP_REWARD } from '@soloquest/shared';
+import { RECURRING_XP_REWARD, MAX_BACKFILL_DAYS } from '@soloquest/shared';
 
 const props = defineProps<{ quest: RecurringQuestWithStreak }>();
 const emit = defineEmits<{
   completed: [result: RecurringCompleteResult];
+  backfilled: [result: RecurringCompleteResult];
   deleted: [id: string];
   achievementsEarned: [achievements: Achievement[]];
   edit: [quest: RecurringQuest, event: MouseEvent];
@@ -24,20 +25,25 @@ const color = computed(() => rankColor(props.quest.difficulty));
 const createdLabel = computed(() => formatDate(props.quest.createdAt));
 const recurrence = computed(() => recurrenceLabel(props.quest));
 
-const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQuestActions(
-  () => props.quest,
-  {
+const { completing, deleting, errorMsg, backfillingDate, onComplete, onBackfill, onDelete } =
+  useRecurringQuestActions(() => props.quest, {
     completed: (r) => emit('completed', r),
     deleted: (id) => emit('deleted', id),
     achievementsEarned: (a) => emit('achievementsEarned', a),
-  },
-);
+    // Fold the streak/player result into the list + open detail, then refetch the calendar
+    // so the just-backfilled cell flips to "done" (undefined result = the 409 path, which
+    // already refetched the list — we still refresh the heatmap here).
+    backfilled: async (result) => {
+      if (result) emit('backfilled', result);
+      await refresh();
+    },
+  });
 
 // Completion calendar (heatmap) fetched client-side per the RPC/architecture rules —
 // stats are per-user and the session cookie rides along same-origin. Keyed by quest id;
 // the modal remounts on each open, so a plain per-id key is enough. A failed fetch does
 // not break the panel (the template falls back to a discreet placeholder).
-const { data: stats, error: calendarError } = useAsyncData(
+const { data: stats, error: calendarError, refresh } = useAsyncData(
   `ritual-stats-${props.quest.id}`,
   async () => {
     const res = await client.api['recurring-quests'][':id'].stats.$get({
@@ -98,7 +104,16 @@ const calendar = computed(() => stats.value?.calendar ?? []);
 
         <section class="flex flex-col gap-[0.6rem]">
           <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Calendar</h4>
-          <RecurringQuestHeatmap v-if="calendar.length" :calendar="calendar" />
+          <RecurringQuestHeatmap
+            v-if="calendar.length"
+            :calendar="calendar"
+            :pending-date="backfillingDate"
+            :disabled="completing"
+            @backfill="onBackfill"
+          />
+          <p v-if="calendar.length" class="m-0 text-[0.72rem] text-ink-muted">
+            Missed a day? Click a red day from the last {{ MAX_BACKFILL_DAYS }} days to mark it done.
+          </p>
           <p v-else-if="calendarError" class="m-0 text-[0.85rem] text-line-soft">
             Calendar unavailable.
           </p>

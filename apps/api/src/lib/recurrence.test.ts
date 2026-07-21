@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { getUserDate, isCompletableDate, toDateString } from './recurrence';
+import {
+  getUserDate,
+  isCompletableDate,
+  isWithinBackfillWindow,
+  toDateString,
+} from './recurrence';
 
 describe('isCompletableDate', () => {
   // All args are local calendar dates in the user's timezone ('YYYY-MM-DD').
@@ -44,5 +49,30 @@ describe('isCompletableDate', () => {
     expect(nyCreatedDate).toBe('2026-07-02');
     expect(nyToday).toBe('2026-07-02');
     expect(isCompletableDate('2026-07-02', nyToday, nyCreatedDate)).toBe(true);
+  });
+});
+
+describe('isWithinBackfillWindow', () => {
+  const today = '2026-07-15';
+
+  it('accepts today', () => {
+    expect(isWithinBackfillWindow('2026-07-15', today, 7)).toBe(true);
+  });
+
+  it('accepts the oldest in-window day (exactly maxDaysBack ago)', () => {
+    expect(isWithinBackfillWindow('2026-07-08', today, 7)).toBe(true);
+  });
+
+  it('rejects a day one past the window', () => {
+    expect(isWithinBackfillWindow('2026-07-07', today, 7)).toBe(false);
+  });
+
+  it('rejects a future day', () => {
+    expect(isWithinBackfillWindow('2026-07-16', today, 7)).toBe(false);
+  });
+
+  it('crosses a month boundary by date arithmetic, not string math', () => {
+    expect(isWithinBackfillWindow('2026-06-28', '2026-07-03', 7)).toBe(true);
+    expect(isWithinBackfillWindow('2026-06-25', '2026-07-03', 7)).toBe(false);
   });
 });

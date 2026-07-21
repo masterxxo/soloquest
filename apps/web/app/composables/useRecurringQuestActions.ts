@@ -19,6 +19,9 @@ export function useRecurringQuestActions(
     completed: (r: RecurringCompleteResult) => void;
     deleted: (id: string) => void;
     achievementsEarned: (a: Achievement[]) => void;
+    // Called only from the detail modal's heatmap (the card has no backfill surface).
+    // `result` is undefined on the 409 path — the caller should just refetch its view.
+    backfilled?: (result?: RecurringCompleteResult) => void | Promise<void>;
   },
 ) {
   const quests = useQuestsStore();
@@ -30,6 +33,9 @@ export function useRecurringQuestActions(
   const completing = computed(() => quests.isCompleting('recurring', getQuest().id));
   const deleting = ref(false);
   const errorMsg = ref<string | null>(null);
+  // Which past day (if any) is currently being backfilled — lets the heatmap show the
+  // in-flight cell without a second per-cell flag.
+  const backfillingDate = ref<string | null>(null);
 
   async function onComplete() {
     const quest = getQuest();
@@ -72,6 +78,47 @@ export function useRecurringQuestActions(
     }
   }
 
+  // Backfill a due-but-missed past day from the heatmap. Same endpoint, atomic path and
+  // in-flight guard as onComplete — just a different date. On success the caller (the
+  // detail modal) folds in the streak/player result and refetches the calendar so the
+  // cell flips to "done".
+  async function onBackfill(date: string) {
+    const quest = getQuest();
+    if (!quests.beginComplete('recurring', quest.id)) return;
+    backfillingDate.value = date;
+    errorMsg.value = null;
+    try {
+      const res = await client.api['recurring-quests'][':id'].complete.$post({
+        param: { id: quest.id },
+        json: { completedDate: date },
+      });
+
+      // Already recorded (a second tab/device, or a double click that raced this one). Not
+      // an error the player caused: state it, and refetch so the view settles on the truth.
+      // The XP for that completion was granted — just not here — so refresh player state too.
+      if (res.status === 409) {
+        feedback.showInfo('That day is already completed.');
+        await Promise.all([quests.refreshRecurring(), player.refreshFromSession()]);
+        await handlers.backfilled?.();
+        return;
+      }
+
+      if (!res.ok) {
+        const { message } = await readApiError(res, 'Could not complete that day.');
+        errorMsg.value = message;
+        feedback.showNotice([message], 'warning');
+        return;
+      }
+
+      const result = await res.json();
+      await handlers.backfilled?.(result);
+      if (result.newAchievements.length > 0) handlers.achievementsEarned(result.newAchievements);
+    } finally {
+      backfillingDate.value = null;
+      quests.endComplete('recurring', quest.id);
+    }
+  }
+
   async function onDelete() {
     const quest = getQuest();
     if (!confirm(`Delete ritual "${quest.title}"?`)) return;
@@ -89,5 +136,5 @@ export function useRecurringQuestActions(
     }
   }
 
-  return { completing, deleting, errorMsg, onComplete, onDelete };
+  return { completing, deleting, errorMsg, backfillingDate, onComplete, onBackfill, onDelete };
 }

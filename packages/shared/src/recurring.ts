@@ -8,6 +8,12 @@ export type { RecurrenceType };
 // Highest valid weekday bitmask: bits 0..6 (Mon..Sun) all set.
 const MAX_WEEKDAY_MASK = 0b1111111;
 
+// How many days back a due-but-missed ritual day may still be completed ("backfilled").
+// A product decision, shared so the API (which enforces it) and the web (which decides
+// which heatmap cells are clickable) agree on the exact window. Counted in the user's
+// timezone: a day is in-window when it is no older than this many days before today.
+export const MAX_BACKFILL_DAYS = 7;
+
 // Thrown by normalizeRecurrence for an invalid recurrenceType/recurrenceValue
 // combination. Routes catch this to return a 400 instead of a generic 500.
 export class RecurrenceValidationError extends Error {

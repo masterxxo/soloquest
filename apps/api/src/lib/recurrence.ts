@@ -93,43 +93,6 @@ export function wasRequiredOn(
 }
 
 /**
- * The most recent day *before* `date` on which this quest was required, or null when
- * there isn't one. Used by the streak logic: a completion continues the streak only
- * when the last completion landed on exactly this day.
- *
- *   daily        → the day before.
- *   every_x_days → recurrenceValue days earlier (the fixed cadence's prior tick).
- *   weekdays     → the nearest earlier day (within 7) whose weekday bit is set.
- */
-export function previousRequiredDate(
-  quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
-  date: Date,
-): Date | null {
-  switch (quest.recurrenceType) {
-    case 'daily':
-      return new Date(date.getTime() - MS_PER_DAY);
-
-    case 'every_x_days': {
-      if (!quest.recurrenceValue || quest.recurrenceValue < 1) return null;
-      return new Date(date.getTime() - quest.recurrenceValue * MS_PER_DAY);
-    }
-
-    case 'weekdays': {
-      if (!quest.recurrenceValue) return null;
-      for (let i = 1; i <= 7; i++) {
-        const candidate = new Date(date.getTime() - i * MS_PER_DAY);
-        const bit = (candidate.getUTCDay() + 6) % 7;
-        if ((quest.recurrenceValue & (1 << bit)) !== 0) return candidate;
-      }
-      return null;
-    }
-
-    default:
-      return null;
-  }
-}
-
-/**
  * Can this recurring quest be completed for `completedDate`? Guards against XP/streak
  * farming: no future days, and nothing before the quest existed.
  *
@@ -144,6 +107,83 @@ export function isCompletableDate(
   createdDate: string,
 ): boolean {
   return completedDate >= createdDate && completedDate <= today;
+}
+
+/**
+ * Is `completedDate` recent enough to backfill — no older than `maxDaysBack` days before
+ * `today` (and not in the future)? Both are the user's local calendar day, 'YYYY-MM-DD'.
+ * The earliest allowed day is computed by date arithmetic (not string math), then compared
+ * lexicographically — which equals chronological order for zero-padded dates. Pairs with
+ * isCompletableDate: that one guards the quest's own range, this one the backfill window.
+ */
+export function isWithinBackfillWindow(
+  completedDate: string,
+  today: string,
+  maxDaysBack: number,
+): boolean {
+  const earliest = toDateString(new Date(fromDateString(today).getTime() - maxDaysBack * MS_PER_DAY));
+  return completedDate >= earliest && completedDate <= today;
+}
+
+/** A recurring quest's streak counters, recomputed from its completion history. */
+export interface RecalculatedStreak {
+  currentStreak: number;
+  longestStreak: number;
+  totalCompletions: number;
+  lastCompletedDate: string | null;
+}
+
+/**
+ * Recompute a recurring quest's streak from scratch — from the full set of completion
+ * dates plus the same `wasRequiredOn` predicate the cron and heatmap use. This is the
+ * single streak definition: the /complete path recalculates rather than incrementing, so
+ * backfilling a missed day in the *middle* of a run correctly re-joins the two halves
+ * (an incremental update, which only looks at the previous required day, cannot).
+ *
+ * Walks every required day from `questStart` to `today` (both the user's local calendar
+ * day at UTC midnight — step by MS_PER_DAY, never tripping over DST, exactly as
+ * buildRecurringCalendar does):
+ *   current → the run of consecutive completed required days ending at the most recent
+ *             required day. `today`, if required but not yet completed, is "in progress":
+ *             it neither extends nor breaks the streak, mirroring the cron which judges
+ *             only closed days. So a missed *closed* day is the only thing that zeroes it.
+ *   longest → the longest such run anywhere in the history window.
+ *   total   → number of completions. lastCompletedDate → the latest completed day.
+ */
+export function recalculateStreak(
+  quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
+  completedDates: ReadonlySet<string>,
+  questStart: Date,
+  today: Date,
+): RecalculatedStreak {
+  const todayTime = today.getTime();
+  let longest = 0;
+  let run = 0;
+  for (let t = questStart.getTime(); t <= todayTime; t += MS_PER_DAY) {
+    const day = new Date(t);
+    if (!wasRequiredOn(quest, day)) continue;
+    const done = completedDates.has(toDateString(day));
+    // Today is still running: a not-yet-done today is neutral (skip), never a break.
+    if (t === todayTime && !done) continue;
+    if (done) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 0;
+    }
+  }
+
+  let lastCompletedDate: string | null = null;
+  for (const ds of completedDates) {
+    if (lastCompletedDate === null || ds > lastCompletedDate) lastCompletedDate = ds;
+  }
+
+  return {
+    currentStreak: run,
+    longestStreak: longest,
+    totalCompletions: completedDates.size,
+    lastCompletedDate,
+  };
 }
 
 /** Status of a single day in a recurring quest's completion calendar (heatmap). */

@@ -43,6 +43,20 @@ async function onCreated(_quest: RecurringQuest) {
 function onCompleted(result: RecurringCompleteResult) {
   quests.applyRecurringCompleted(result);
 }
+// Backfilled a past day from the detail's heatmap. Fold the refreshed counters into the
+// store and, because the detail stays open, into the selected ritual it renders from.
+function onBackfilled(result: RecurringCompleteResult) {
+  quests.applyRecurringBackfilled(result);
+  if (
+    selectedRitual.value?.id === result.completion.recurringQuestId &&
+    selectedRitual.value.streak
+  ) {
+    selectedRitual.value = {
+      ...selectedRitual.value,
+      streak: { ...selectedRitual.value.streak, ...result.streak },
+    };
+  }
+}
 function onDeleted(id: string) {
   quests.removeRecurring(id);
 }
@@ -115,6 +129,7 @@ function onRitualEdited(quest: RecurringQuest) {
       <RecurringQuestDetail
         :quest="selectedRitual"
         @completed="onDetailCompleted"
+        @backfilled="onBackfilled"
         @deleted="onDetailDeleted"
         @edit="openEditRitual"
         @achievements-earned="onAchievementsEarned"

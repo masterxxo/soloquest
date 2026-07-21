@@ -13,24 +13,29 @@ import {
   recurringQuestIdParamSchema,
   normalizeRecurrence,
   RecurrenceValidationError,
-  RECURRING_XP_REWARD,
 } from '@soloquest/shared';
 import { requireAuth, type Variables } from '../middleware/auth';
 import {
   getUserDate,
   toDateString,
-  fromDateString,
   wasRequiredOn,
-  previousRequiredDate,
-  isCompletableDate,
   calendarWindowStart,
   buildRecurringCalendar,
 } from '../lib/recurrence';
-import { checkAndAwardAchievements } from '../lib/streak';
-import { grantXp } from '../lib/xp';
 import { getUserTimezone } from '../lib/user-settings';
 import { findOwnedRecurringQuest } from '../lib/recurring-quests';
+import { completeRecurringQuestForDate } from '../lib/recurring-completion';
 import { zValidator } from '../lib/validate';
+
+// Route-level messages for each refusal the completion helper can return. 4xx bodies keep
+// the one-shape { error } contract; not_active / already_completed are 409, the rest 400.
+const BACKFILL_ERROR: Record<string, { message: string; status: 400 | 409 }> = {
+  not_active: { message: 'Recurring quest is not active', status: 409 },
+  out_of_range: { message: "Completion date must be within the ritual's active range", status: 400 },
+  out_of_window: { message: 'This day is too far in the past to complete', status: 400 },
+  not_required: { message: 'Quest was not required on this date', status: 400 },
+  already_completed: { message: 'Already completed for this date', status: 409 },
+};
 
 // How many weeks back the /stats heatmap shows. Pulled out as a constant so the window
 // can later be bumped to a full year (e.g. 52) in one place.
@@ -176,8 +181,11 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
     return c.json({ success: true });
   })
 
-  // Complete a recurring quest for a given date: record it, advance the streak, grant
-  // XP, and award any newly-crossed achievements — all atomically.
+  // Complete a recurring quest for a given date — today's completion or a backfilled
+  // missed day, one path. Records it, recalculates the streak, grants flat XP, and awards
+  // any newly-crossed achievements, all atomically. Date validation and the transaction
+  // live in completeRecurringQuestForDate; here we only resolve ownership + the timezone
+  // and translate its typed refusals into HTTP responses.
   .post(
     '/:id/complete',
     zValidator('param', recurringQuestIdParamSchema),
@@ -189,108 +197,21 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
 
       const quest = await findOwnedRecurringQuest(db, id, userId);
       if (!quest) return c.json({ error: 'Recurring quest not found' }, 404);
-      if (!quest.isActive) {
-        return c.json({ error: 'Recurring quest is not active' }, 409);
-      }
 
-      const completedDateObj = fromDateString(completedDate);
-
-      // Reject future dates and anything before the quest existed — otherwise a client
-      // could farm XP, totalCompletions, streaks and achievements with fabricated dates.
       const timezone = await getUserTimezone(db, userId);
-      // Anchor both bounds through getUserDate so today and createdDate share one frame
-      // (the user's local calendar day) — no UTC/local mixing on the day boundary.
       const today = toDateString(getUserDate(new Date(), timezone));
-      const createdDate = toDateString(getUserDate(quest.createdAt, timezone));
-      if (!isCompletableDate(completedDate, today, createdDate)) {
-        return c.json(
-          { error: "Completion date must be within the ritual's active range" },
-          400,
-        );
-      }
 
-      if (!wasRequiredOn(quest, completedDateObj)) {
-        return c.json({ error: 'Quest was not required on this date' }, 400);
-      }
-
-      const result = await db.transaction(async (tx) => {
-        // "One completion per quest per day" is enforced by the unique constraint on
-        // (recurring_quest_id, completed_date), not by a check before the transaction:
-        // two concurrent requests would both pass such a check and then double-grant XP,
-        // streak and achievements (or blow up on the constraint). Insert first, let the
-        // database arbitrate, and bail out before any side effect if we lost the race.
-        const [completion] = await tx
-          .insert(recurringQuestCompletions)
-          .values({ recurringQuestId: id, userId, completedDate })
-          .onConflictDoNothing()
-          .returning();
-        if (!completion) return { error: 'already_completed' as const };
-
-        // Read the current streak (created at POST; recreated defensively if missing).
-        let [streak] = await tx
-          .select()
-          .from(recurringQuestStreaks)
-          .where(eq(recurringQuestStreaks.recurringQuestId, id));
-        if (!streak) {
-          [streak] = await tx
-            .insert(recurringQuestStreaks)
-            .values({ recurringQuestId: id, userId })
-            .returning();
-        }
-        if (!streak) throw new Error('Failed to load or create streak');
-
-        // The streak continues only if the previous completion landed exactly on the
-        // prior required day; otherwise it restarts at 1.
-        const prevRequired = previousRequiredDate(quest, completedDateObj);
-        const prevRequiredStr = prevRequired ? toDateString(prevRequired) : null;
-        const continues =
-          streak.lastCompletedDate !== null &&
-          prevRequiredStr !== null &&
-          streak.lastCompletedDate === prevRequiredStr;
-
-        const currentStreak = continues ? streak.currentStreak + 1 : 1;
-        const longestStreak = Math.max(streak.longestStreak, currentStreak);
-        const totalCompletions = streak.totalCompletions + 1;
-        // Never move lastCompletedDate backwards (e.g. backfilling an earlier date).
-        const lastCompletedDate =
-          streak.lastCompletedDate && streak.lastCompletedDate > completedDate
-            ? streak.lastCompletedDate
-            : completedDate;
-
-        const [updatedStreak] = await tx
-          .update(recurringQuestStreaks)
-          .set({ currentStreak, longestStreak, totalCompletions, lastCompletedDate })
-          .where(eq(recurringQuestStreaks.recurringQuestId, id))
-          .returning();
-        if (!updatedStreak) throw new Error('Failed to update streak');
-
-        // Server-authoritative XP: flat reward via the shared atomic helper.
-        const player = await grantXp(tx, userId, RECURRING_XP_REWARD);
-
-        const { newAchievements } = await checkAndAwardAchievements(
-          tx,
-          userId,
-          id,
-          updatedStreak,
-        );
-
-        return {
-          completion,
-          streak: {
-            currentStreak: updatedStreak.currentStreak,
-            longestStreak: updatedStreak.longestStreak,
-            totalCompletions: updatedStreak.totalCompletions,
-          },
-          player: { xp: player.xp, level: player.level },
-          leveledUp: player.leveledUp,
-          newAchievements,
-        };
+      const result = await completeRecurringQuestForDate(db, {
+        quest,
+        userId,
+        completedDate,
+        today,
+        timezone,
       });
 
-      // Lost the race (or a plain double-click): the day was already recorded, so no XP,
-      // no streak advance, no achievements — just say so.
       if ('error' in result) {
-        return c.json({ error: 'Already completed for this date' }, 409);
+        const mapped = BACKFILL_ERROR[result.error]!;
+        return c.json({ error: mapped.message }, mapped.status);
       }
 
       return c.json(result);
