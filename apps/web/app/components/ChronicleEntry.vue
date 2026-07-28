@@ -1,42 +1,23 @@
 <script setup lang="ts">
 import type { CompletionLogEntry } from '~/lib/api-client';
-import { rankColor } from '~/lib/ranks';
 
-// A single, read-only line in the Chronicles log. Deliberately NOT a QuestCard: this is a
-// register of things already done, so it carries no Edit / Complete / Delete action and no
-// click-through. Title/difficulty/xp are the completion's snapshot (the quest may be gone).
+// One read-only line in the Chronicles log: title + rank + XP + time, from the completion's
+// snapshot (the quest may be gone). No tags or priority — they aren't in the completion
+// snapshot. Cyan appears only as a fill marker, never as the XP numeral (Chronicles ruling).
 const props = defineProps<{ entry: CompletionLogEntry }>();
 
-const color = computed(() => rankColor(props.entry.difficulty));
-
-// Time-of-day of the completion, in the viewer's locale. The day itself is already the
-// group header, so the row only needs the clock time.
 const time = computed(() =>
-  new Date(props.entry.completedAt).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }),
+  new Date(props.entry.completedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
 );
 </script>
 
 <template>
-  <article
-    class="flex items-center gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.55rem]"
-  >
-    <span
-      class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-      :style="{ color, borderColor: color }"
-    >
-      {{ entry.difficulty }}
+  <article class="flex items-center gap-3 border border-dl-hairline bg-dl-surface px-3 py-2">
+    <span class="min-w-0 flex-1 truncate text-dl-body text-dl-ink">{{ entry.title }}</span>
+    <RankBadge :rank="entry.difficulty" class="shrink-0" />
+    <span class="flex shrink-0 items-center gap-1.5 font-dl-mono text-dl-label text-dl-ink">
+      <span class="h-2 w-2 bg-dl-cyan" aria-hidden="true" />+{{ entry.xpAwarded }} XP
     </span>
-
-    <h3 class="m-0 min-w-0 flex-auto truncate text-[0.95rem] text-ink-soft">
-      {{ entry.title }}
-    </h3>
-
-    <div class="flex flex-none flex-col items-end gap-[0.15rem]">
-      <span class="text-[0.8rem] font-semibold text-accent-light">+{{ entry.xpAwarded }} XP</span>
-      <span class="text-[0.7rem] text-ink-dim">{{ time }}</span>
-    </div>
+    <span class="w-12 shrink-0 text-right font-dl-mono text-dl-label text-dl-ink-faint">{{ time }}</span>
   </article>
 </template>

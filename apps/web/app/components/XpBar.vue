@@ -1,16 +1,13 @@
 <script setup lang="ts">
-// Shared XP progress bar — used by the top bar and the Status panel.
+// Shared XP progress bar (Status profile). Cyan fill on a sunk track — cyan is fill only,
+// never a numeral, per the system's colour law.
 defineProps<{ percent: number }>();
 </script>
 
 <template>
-  <div
-    class="h-[10px] overflow-hidden border border-accent/55 bg-accent/12 shadow-[inset_0_0_6px_rgba(124,92,232,0.2),0_0_5px_rgba(124,92,232,0.3)]"
-  >
-    <!-- Tinted track + glowing outline so the bar reads as a defined element even
-         when empty (a near-black track vanished against the dark header). -->
+  <div class="h-2 overflow-hidden bg-dl-sunk">
     <div
-      class="h-full bg-gradient-to-r from-[#5a3fd0] to-accent-light shadow-[0_0_10px_rgba(124,92,232,0.8)] transition-[width] duration-[400ms] ease-[ease]"
+      class="h-full bg-dl-cyan transition-[width] duration-dl-sweep ease-dl"
       :style="{ width: `${percent}%` }"
     />
   </div>

@@ -5,205 +5,188 @@ import { useQuestsStore } from '~/stores/quests';
 import { TAG_NAME_MAX_LENGTH, TAG_COLORS, type TagColor } from '@soloquest/shared';
 import { tagSwatchStyle } from '~/lib/tag-colors';
 
-// Minimal tag management: list the user's tags with usage counts, rename inline, delete with
-// a confirm that spells out how many quests are affected. Reads/writes the shared tags store;
-// after a rename or delete it also patches the quests store so already-loaded cards update
-// without a refetch.
+// Tag management: list the user's tags (usage counts), and rename/recolour/delete each in one
+// modal — three actions on one object, so they share a single interaction model (per the
+// design ruling). Reads/writes the shared tags store; after a change it patches the quests
+// store so already-loaded cards update without a refetch.
 const tagsStore = useTagsStore();
 const quests = useQuestsStore();
 const { sortedTags } = storeToRefs(tagsStore);
-
 onMounted(() => { tagsStore.load(); });
 
-// One row at a time is either being renamed, awaiting delete-confirm, or picking a colour;
-// ids keep it simple. The palette is the canonical order from shared.
 const palette = TAG_COLORS;
+
 const editingId = ref<string | null>(null);
-const draftName = ref('');
+const editName = ref('');
+const editColor = ref<TagColor>('amethyst');
 const editError = ref<string | null>(null);
-const savingId = ref<string | null>(null);
-const confirmingId = ref<string | null>(null);
-const coloringId = ref<string | null>(null);
+const saving = ref(false);
+const confirming = ref(false);
 
-function startEdit(id: string, name: string) {
-  confirmingId.value = null;
-  coloringId.value = null;
+const editingTag = computed(() => sortedTags.value.find((t) => t.id === editingId.value) ?? null);
+
+function openEdit(id: string, name: string, color: TagColor) {
   editingId.value = id;
-  draftName.value = name;
+  editName.value = name;
+  editColor.value = color;
   editError.value = null;
 }
-
-function toggleColorGrid(id: string) {
+function closeEdit() {
   editingId.value = null;
-  confirmingId.value = null;
-  coloringId.value = coloringId.value === id ? null : id;
+  confirming.value = false;
 }
 
-async function pickColor(id: string, color: TagColor) {
-  if (await tagsStore.setColor(id, color)) quests.recolorTagEverywhere(id, color);
-  coloringId.value = null;
-}
-
-function cancelEdit() {
-  editingId.value = null;
-  draftName.value = '';
-  editError.value = null;
-}
-
-async function saveEdit(id: string) {
-  const name = draftName.value.trim();
+async function save() {
+  const tag = editingTag.value;
+  if (!tag) return;
+  const name = editName.value.trim();
   if (!name) {
     editError.value = 'Name cannot be empty.';
     return;
   }
-  savingId.value = id;
+  saving.value = true;
   editError.value = null;
   try {
-    const error = await tagsStore.renameTag(id, name);
-    if (error) {
-      editError.value = error;
-      return;
+    if (name !== tag.name) {
+      const error = await tagsStore.renameTag(tag.id, name);
+      if (error) {
+        editError.value = error;
+        return;
+      }
+      quests.renameTagEverywhere(tag.id, name);
     }
-    quests.renameTagEverywhere(id, name);
-    cancelEdit();
+    if (editColor.value !== tag.color) {
+      if (await tagsStore.setColor(tag.id, editColor.value)) quests.recolorTagEverywhere(tag.id, editColor.value);
+    }
+    closeEdit();
   } finally {
-    savingId.value = null;
+    saving.value = false;
   }
 }
 
-async function confirmDelete(id: string) {
-  savingId.value = id;
+async function confirmDelete() {
+  const tag = editingTag.value;
+  if (!tag) return;
+  saving.value = true;
   try {
-    if (await tagsStore.deleteTag(id)) quests.removeTagEverywhere(id);
-    confirmingId.value = null;
+    if (await tagsStore.deleteTag(tag.id)) quests.removeTagEverywhere(tag.id);
+    closeEdit();
   } finally {
-    savingId.value = null;
+    saving.value = false;
   }
 }
 </script>
 
 <template>
-  <section>
-    <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Tags</h2>
+  <section class="flex flex-col gap-2">
+    <div class="flex items-center gap-2 border-b border-dl-band-line pb-1">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Tags</span>
+      <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ sortedTags.length }}</span>
+    </div>
 
-    <p v-if="!sortedTags.length" class="m-0 text-[0.85rem] text-line-soft">
-      No tags yet. Add them to a quest to start organising.
+    <p v-if="!sortedTags.length" class="m-0 text-dl-body text-dl-ink-muted">
+      No tags yet. Tags are created while writing a quest; this is where they're renamed, recoloured and removed.
     </p>
 
-    <ul v-else class="m-0 flex list-none flex-col gap-[0.4rem] p-0">
+    <ul v-else class="m-0 flex list-none flex-col gap-1 p-0">
       <li
         v-for="tag in sortedTags"
         :key="tag.id"
-        class="flex flex-col gap-[0.4rem] rounded-none border border-line bg-[rgba(26,17,64,0.4)] px-[0.7rem] py-[0.5rem]"
+        class="flex items-center gap-3 border border-dl-hairline bg-dl-surface px-3 py-2"
       >
-        <!-- Rename mode -->
-        <div v-if="editingId === tag.id" class="flex flex-col gap-[0.4rem]">
-          <div class="flex items-center gap-2">
-            <input
-              v-model="draftName"
-              type="text"
-              :maxlength="TAG_NAME_MAX_LENGTH"
-              class="min-w-0 flex-1 rounded-none border border-line bg-panel px-[0.6rem] py-[0.4rem] text-[0.85rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-              :disabled="savingId === tag.id"
-              @keydown.enter.prevent="saveEdit(tag.id)"
-              @keydown.esc.stop.prevent="cancelEdit()"
-            />
-            <button
-              type="button"
-              class="flex-none cursor-pointer border border-accent bg-accent/12 px-[0.6rem] py-[0.4rem] text-[0.78rem] font-semibold text-ink font-[inherit] hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="savingId === tag.id"
-              @click="saveEdit(tag.id)"
-            >
-              Save
-            </button>
-            <button
-              type="button"
-              class="flex-none cursor-pointer border border-line bg-transparent px-[0.6rem] py-[0.4rem] text-[0.78rem] font-semibold text-ink-dim font-[inherit] hover:border-line-soft hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="savingId === tag.id"
-              @click="cancelEdit()"
-            >
-              Cancel
-            </button>
-          </div>
-          <p v-if="editError" class="m-0 text-[0.75rem] text-danger-bright">{{ editError }}</p>
-        </div>
+        <TagChip :name="tag.name" :color="tag.color" />
+        <span class="ml-auto font-dl-mono text-dl-label text-dl-ink-faint">{{ tag.usageCount }} {{ tag.usageCount === 1 ? 'quest' : 'quests' }}</span>
+        <button
+          type="button"
+          class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-3 py-1 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink"
+          @click="openEdit(tag.id, tag.name, tag.color)"
+        >Edit</button>
+      </li>
+    </ul>
 
-        <!-- Delete-confirm mode: name the blast radius before removing. -->
-        <div v-else-if="confirmingId === tag.id" class="flex flex-wrap items-center justify-between gap-2">
-          <span class="text-[0.85rem] text-ink">
-            Delete "{{ tag.name }}"?
-            <span class="text-ink-dim">Used on {{ tag.usageCount }} quest{{ tag.usageCount === 1 ? '' : 's' }}.</span>
-          </span>
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="cursor-pointer border border-[#5a2740] bg-transparent px-[0.6rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright font-[inherit] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="savingId === tag.id"
-              @click="confirmDelete(tag.id)"
-            >
-              Delete
-            </button>
-            <button
-              type="button"
-              class="cursor-pointer border border-line bg-transparent px-[0.6rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink-dim font-[inherit] hover:border-line-soft hover:text-ink"
-              @click="confirmingId = null"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+    <!-- Edit: rename + recolour, with delete reachable from here. -->
+    <DlModal v-if="editingTag && !confirming" title="Edit tag" @close="closeEdit">
+      <div class="flex flex-col gap-5">
+        <label class="flex flex-col gap-1.5">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Name</span>
+          <input
+            v-model="editName"
+            type="text"
+            :maxlength="TAG_NAME_MAX_LENGTH"
+            class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none"
+            @keydown.enter.prevent="save"
+          />
+          <span class="font-dl-mono text-dl-label text-dl-ink-faint">Renaming updates the tag on all {{ editingTag.usageCount }} {{ editingTag.usageCount === 1 ? 'quest' : 'quests' }} at once.</span>
+        </label>
 
-        <!-- Default row -->
-        <div v-else class="flex flex-col gap-[0.4rem]">
-          <div class="flex items-center justify-between gap-2">
-            <!-- Colour swatch: toggles the palette grid below. -->
-            <button
-              type="button"
-              class="h-[0.95rem] w-[0.95rem] flex-none cursor-pointer rounded-full border border-line/60"
-              :style="tagSwatchStyle(tag.color)"
-              :aria-label="`Change colour of ${tag.name}`"
-              :aria-expanded="coloringId === tag.id"
-              @click="toggleColorGrid(tag.id)"
-            />
-            <span class="min-w-0 flex-1 truncate text-[0.9rem] text-ink-soft">{{ tag.name }}</span>
-            <span class="flex-none text-[0.75rem] text-ink-muted">
-              {{ tag.usageCount }} quest{{ tag.usageCount === 1 ? '' : 's' }}
-            </span>
-            <div class="flex flex-none items-center gap-1">
-              <button
-                type="button"
-                class="cursor-pointer border border-line bg-transparent px-[0.5rem] py-[0.3rem] text-[0.75rem] font-semibold text-ink font-[inherit] hover:border-accent"
-                @click="startEdit(tag.id, tag.name)"
-              >
-                Rename
-              </button>
-              <button
-                type="button"
-                class="cursor-pointer border border-[#5a2740] bg-transparent px-[0.5rem] py-[0.3rem] text-[0.75rem] font-semibold text-danger-bright font-[inherit] hover:brightness-110"
-                aria-label="Delete tag"
-                @click="confirmingId = tag.id; coloringId = null"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          <!-- Palette grid: 15 canonical colours; click applies (PATCH) and closes. -->
-          <div v-if="coloringId === tag.id" class="flex flex-wrap gap-[0.35rem] pt-[0.15rem]">
+        <div class="flex flex-col gap-2">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Colour · 15 palette options</span>
+          <div class="flex flex-wrap gap-2">
             <button
               v-for="color in palette"
               :key="color"
               type="button"
-              class="h-[1.2rem] w-[1.2rem] cursor-pointer rounded-full border"
-              :class="color === tag.color ? 'border-ink' : 'border-line/40 hover:border-line-soft'"
+              class="dl-focus-outset h-7 w-7 cursor-pointer border"
+              :class="color === editColor ? 'border-dl-ink' : 'border-dl-hairline'"
               :style="tagSwatchStyle(color)"
               :aria-label="color"
-              :aria-pressed="color === tag.color"
-              @click="pickColor(tag.id, color)"
+              :aria-pressed="color === editColor"
+              @click="editColor = color"
             />
           </div>
         </div>
-      </li>
-    </ul>
+
+        <div class="flex items-center gap-2">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Preview</span>
+          <TagChip :name="editName || editingTag.name" :color="editColor" />
+        </div>
+
+        <p v-if="editError" class="m-0 text-dl-meta text-dl-magenta">{{ editError }}</p>
+      </div>
+
+      <template #footer>
+        <button
+          type="button"
+          class="dl-focus-inset cursor-pointer border border-dl-magenta bg-transparent px-3 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-magenta hover:bg-dl-magenta/10"
+          @click="confirming = true"
+        >Delete tag</button>
+        <div class="flex-1" />
+        <button
+          type="button"
+          class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink"
+          @click="closeEdit"
+        >Cancel</button>
+        <button
+          type="button"
+          :disabled="saving"
+          class="dl-focus-inset cursor-pointer bg-dl-violet px-4 py-2 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white transition-[filter] hover:brightness-110 disabled:opacity-60"
+          @click="save"
+        >{{ saving ? 'Saving…' : 'Save changes' }}</button>
+      </template>
+    </DlModal>
+
+    <!-- Delete confirmation: magenta chrome, magenta-outlined primary (never a filled button). -->
+    <DlModal v-if="editingTag && confirming" title="Delete tag" tone="danger" @close="confirming = false">
+      <div class="flex flex-col gap-3">
+        <p class="m-0 flex gap-2 border border-dl-magenta bg-dl-magenta/10 px-3 py-2 text-dl-body text-dl-ink">
+          <span aria-hidden="true" class="text-dl-magenta">!</span>
+          Remove "{{ editingTag.name }}" from {{ editingTag.usageCount }} {{ editingTag.usageCount === 1 ? 'quest' : 'quests' }}?
+        </p>
+        <p class="m-0 text-dl-meta text-dl-ink-muted">The quests themselves are untouched — they simply lose this tag, including the ones already recorded in Chronicles. The tag cannot be restored, and re-creating it starts a new usage count at zero.</p>
+      </div>
+      <template #footer>
+        <button
+          type="button"
+          class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink"
+          @click="confirming = false"
+        >Keep tag</button>
+        <button
+          type="button"
+          :disabled="saving"
+          class="dl-focus-inset cursor-pointer border border-dl-magenta bg-transparent px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-magenta hover:bg-dl-magenta/10 disabled:opacity-60"
+          @click="confirmDelete"
+        >{{ saving ? 'Deleting…' : 'Delete tag' }}</button>
+      </template>
+    </DlModal>
   </section>
 </template>

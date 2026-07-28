@@ -4,7 +4,7 @@ import { useTagsStore } from '~/stores/tags';
 import { useTagCombobox } from '~/composables/useTagCombobox';
 import { useAnchoredList } from '~/composables/useAnchoredList';
 import { normalizeTagName, TAG_NAME_MAX_LENGTH } from '@soloquest/shared';
-import { tagChipStyle, tagSwatchStyle } from '~/lib/tag-colors';
+import { tagSwatchStyle } from '~/lib/tag-colors';
 import type { QuestTag } from '~/lib/api-client';
 
 // Todoist-style tag combobox: search existing tags, pick with mouse or keyboard, or create
@@ -115,30 +115,21 @@ watch(activeIndex, (i) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-    <span :id="`${listboxId}-label`">Tags</span>
+  <div class="flex flex-col gap-1.5">
+    <span :id="`${listboxId}-label`" class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Tags</span>
     <div
       ref="fieldEl"
-      class="flex flex-wrap items-center gap-[0.35rem] rounded-none border border-line bg-panel px-[0.5rem] py-[0.4rem] focus-within:border-accent focus-within:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+      class="flex flex-wrap items-center gap-1.5 border border-dl-grid-line bg-dl-surface px-2 py-1.5 focus-within:border-dl-violet"
       @click="inputEl?.focus()"
     >
-      <!-- Selected tags as chips in their own colour (deliberately unlike the rank badge). -->
-      <span
+      <TagChip
         v-for="tag in selected"
         :key="tag.id"
-        class="inline-flex items-center gap-[0.3rem] rounded-[3px] border px-[0.4rem] py-[0.15rem] text-[0.75rem]"
-        :style="tagChipStyle(tag.color)"
-      >
-        {{ tag.name }}
-        <button
-          type="button"
-          class="cursor-pointer border-0 bg-transparent p-0 text-[0.85rem] leading-none text-current opacity-70 font-[inherit] hover:opacity-100"
-          :aria-label="`Remove tag ${tag.name}`"
-          @click.stop="removeTag(tag.id)"
-        >
-          ✕
-        </button>
-      </span>
+        :name="tag.name"
+        :color="tag.color"
+        removable
+        @remove="removeTag(tag.id)"
+      />
 
       <!-- The combobox input. role/aria wire it to the listbox below for screen readers. -->
       <input
@@ -153,7 +144,7 @@ watch(activeIndex, (i) => {
         :aria-labelledby="`${listboxId}-label`"
         :maxlength="TAG_NAME_MAX_LENGTH"
         :placeholder="selected.length ? '' : 'Add tags…'"
-        class="min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-[0.85rem] text-ink-soft outline-none font-[inherit]"
+        class="min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
         @focus="openList"
         @input="openList"
         @keydown="onKeydown"
@@ -163,15 +154,14 @@ watch(activeIndex, (i) => {
 
     <!-- Suggestion list. Teleported to <body> and fixed-positioned (via useAnchoredList) so it
          layers over the modal instead of growing it, and the modal body's overflow can't clip
-         it. z-[55] sits above the modal (z-50) and below toasts (z-60). Its own scroll caps the
-         height; the flip and width come from the anchored style. -->
+         it. z-[55] sits above the modal (z-50) and below toasts (z-60). -->
     <Teleport to="body">
       <ul
         v-if="open && options.length"
         :id="listboxId"
         role="listbox"
         :style="anchoredStyle"
-        class="z-[55] m-0 flex list-none flex-col gap-[1px] overflow-y-auto border border-line bg-[rgba(8,5,20,0.98)] p-[0.2rem] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+        class="z-[55] m-0 flex list-none flex-col overflow-y-auto border border-dl-grid-line bg-dl-surface p-1 shadow-[0_8px_24px_rgba(20,17,31,0.15)]"
         @mousedown.prevent
       >
       <li
@@ -180,17 +170,17 @@ watch(activeIndex, (i) => {
         :key="option.kind === 'tag' ? option.tag.id : 'create'"
         role="option"
         :aria-selected="i === activeIndex"
-        class="flex cursor-pointer items-center gap-[0.4rem] rounded-[2px] px-[0.5rem] py-[0.3rem] text-[0.82rem]"
-        :class="i === activeIndex ? 'bg-accent/20 text-ink' : 'text-ink-muted hover:bg-accent/10'"
+        class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-dl-body"
+        :class="i === activeIndex ? 'bg-dl-violet-wash text-dl-ink' : 'text-dl-ink-muted hover:bg-dl-sunk'"
         @mousedown.prevent="choose(option)"
         @mouseenter="activeIndex = i"
       >
         <template v-if="option.kind === 'tag'">
-          <span class="h-[0.6rem] w-[0.6rem] flex-none rounded-full" :style="tagSwatchStyle(option.tag.color)" />
+          <span class="h-2.5 w-2.5 flex-none rounded-full" :style="tagSwatchStyle(option.tag.color)" />
           {{ option.tag.name }}
         </template>
         <template v-else>
-          <span class="text-ink-dim">Create</span> "{{ option.label }}"
+          <span class="text-dl-ink-faint">Create</span> "{{ option.label }}"
         </template>
       </li>
       </ul>

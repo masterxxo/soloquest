@@ -1,138 +1,113 @@
 <script setup lang="ts">
 import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
-import { rankColor } from '~/lib/ranks';
-import { PRIORITY_STYLES } from '~/lib/priority';
+import { PRIORITY_STYLES, PRIORITY_DL_CLASS, priorityMarker } from '~/lib/priority';
 import { formatDate } from '~/lib/date';
 
-const props = defineProps<{
-  quest: Quest;
-}>();
+const props = defineProps<{ quest: Quest }>();
 const emit = defineEmits<{
   completed: [result: CompleteResult];
   deleted: [id: string];
-  // Edit — bubbles to the page, which owns the edit modal.
   edit: [quest: Quest, event: MouseEvent];
 }>();
 
 const isActive = computed(() => props.quest.status === 'active');
-
-const color = computed(() => rankColor(props.quest.difficulty));
-const deadlineLabel = computed(() =>
-  props.quest.deadline ? formatDate(props.quest.deadline) : null,
-);
+const deadlineLabel = computed(() => (props.quest.deadline ? formatDate(props.quest.deadline) : null));
 const createdLabel = computed(() => formatDate(props.quest.createdAt));
-const subCount = computed(() => props.quest.subTasks?.length ?? 0);
-// Detail view is an explicit facts panel, so priority shows for all three levels here.
+const subTasks = computed(() => props.quest.subTasks ?? []);
 const priority = computed(() => PRIORITY_STYLES[props.quest.priority]);
 
-const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(
-  () => props.quest,
-  { completed: (r) => emit('completed', r), deleted: (id) => emit('deleted', id) },
-);
+const { completing, deleting, errorMsg, onComplete, onDelete } = useQuestActions(() => props.quest, {
+  completed: (r) => emit('completed', r),
+  deleted: (id) => emit('deleted', id),
+});
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- Title row -->
-    <header class="flex items-center gap-[0.85rem]">
-      <span
-        class="grid h-[2.4rem] w-[2.4rem] flex-none place-items-center border bg-panel text-[1.1rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-        :style="{ color, borderColor: color }"
-      >
-        {{ quest.difficulty }}
-      </span>
-      <h2 class="m-0 text-[1.6rem] leading-[1.2] text-ink-soft">{{ quest.title }}</h2>
+    <header class="flex items-start gap-3">
+      <RankBadge :rank="quest.difficulty" class="shrink-0" />
+      <h2 class="m-0 min-w-0 flex-1 font-dl-display text-dl-title font-semibold text-dl-ink">{{ quest.title }}</h2>
     </header>
 
-    <!-- Two panes: wide main column + fixed details rail. Stacks on narrow widths. -->
-    <div class="grid grid-cols-[minmax(0,1fr)_280px] items-start gap-7 max-[720px]:grid-cols-[1fr]">
-      <!-- Main column -->
-      <main class="flex min-w-0 flex-col gap-6">
-        <section class="flex flex-col gap-[0.6rem]">
-          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Description</h4>
-          <p v-if="quest.description" class="m-0 whitespace-pre-wrap text-[0.95rem] leading-[1.6] text-ink">{{ quest.description }}</p>
-          <p v-else class="m-0 text-[0.85rem] text-line-soft">No description.</p>
-        </section>
-
-        <section class="flex flex-col gap-[0.6rem]">
-          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Sub-quests <span class="ml-[0.35rem] border border-line bg-[#1a1238] px-[0.4rem] py-[0.05rem] text-[0.7rem] text-[#c9bcff]">{{ subCount }}</span></h4>
-          <div v-if="subCount" class="flex flex-col gap-2">
-            <QuestCard
-              v-for="st in quest.subTasks"
-              :key="st.id"
-              :quest="st"
-              is-sub-task
-              :parent-name="quest.title"
-              @edit="(q, e) => emit('edit', q, e)"
-            />
-          </div>
-          <p v-else class="m-0 text-[0.85rem] text-line-soft">No sub-quests.</p>
-        </section>
-      </main>
-
-      <!-- Details sidebar -->
-      <aside class="flex flex-col gap-4 border border-line bg-[rgba(14,9,30,0.6)] p-4">
-        <div class="flex flex-col gap-2">
-          <!-- Shares its in-flight state with the list card behind the modal (both read the
-               same store entry), so the quest can't be completed — and its XP granted —
-               twice from the two surfaces. -->
-          <button
-            v-if="isActive"
-            class="cursor-pointer border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-            :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
-            :disabled="completing || deleting"
-            :aria-busy="completing"
-            @click="onComplete"
-          >
-            {{ completing ? 'Completing…' : 'Complete' }}
-          </button>
-          <button
-            v-if="isActive"
-            class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-            :disabled="completing || deleting"
-            @click="emit('edit', quest, $event)"
-          >
-            Edit
-          </button>
-          <button
-            class="cursor-pointer border border-[#5a2740] bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.85rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-            :disabled="completing || deleting"
-            @click="onDelete"
-          >
-            {{ deleting ? '…' : 'Delete' }}
-          </button>
-        </div>
-        <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
-
-        <div>
-          <h4 class="m-0 text-[0.72rem] uppercase tracking-[0.16em] text-ink-muted">Details</h4>
-          <dl class="mt-[0.6rem] grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-            <dt class="text-[0.78rem] text-ink-muted">Rank</dt>
-            <dd class="m-0 text-right text-[0.85rem] text-ink">
-              <span
-                class="inline-grid h-6 w-6 place-items-center border bg-panel text-[0.8rem] font-extrabold"
-                :style="{ color, borderColor: color }"
-              >
-                {{ quest.difficulty }}
-              </span>
-            </dd>
-            <dt class="text-[0.78rem] text-ink-muted">Priority</dt>
-            <dd class="m-0 flex items-center justify-end gap-[0.35rem] text-[0.85rem] text-ink">
-              <span class="leading-none" :class="priority.klass" aria-hidden="true">{{ priority.glyph }}</span>
-              {{ priority.short }}
-            </dd>
-            <dt class="text-[0.78rem] text-ink-muted">Status</dt>
-            <dd class="m-0 text-right text-[0.85rem] capitalize text-ink">{{ quest.status }}</dd>
-            <dt class="text-[0.78rem] text-ink-muted">XP reward</dt>
-            <dd class="m-0 text-right text-[0.85rem] font-semibold text-accent-light">+{{ quest.xpReward }} XP</dd>
-            <dt class="text-[0.78rem] text-ink-muted">Deadline</dt>
-            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ deadlineLabel ?? '—' }}</dd>
-            <dt class="text-[0.78rem] text-ink-muted">Created</dt>
-            <dd class="m-0 text-right text-[0.85rem] text-ink">{{ createdLabel }}</dd>
-          </dl>
-        </div>
-      </aside>
+    <!-- Actions -->
+    <div v-if="isActive" class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        class="dl-focus-inset cursor-pointer bg-dl-violet px-4 py-2 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white transition-[filter] hover:brightness-110 disabled:opacity-60"
+        :class="completing ? 'animate-pulse' : ''"
+        :disabled="completing || deleting"
+        :aria-busy="completing"
+        @click="onComplete"
+      >{{ completing ? 'Completing…' : 'Complete' }}</button>
+      <button
+        type="button"
+        class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink disabled:opacity-60"
+        :disabled="completing || deleting"
+        @click="emit('edit', quest, $event)"
+      >Edit</button>
+      <button
+        type="button"
+        class="dl-focus-inset cursor-pointer border border-dl-magenta bg-transparent px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-magenta hover:bg-dl-magenta/10 disabled:opacity-60"
+        :disabled="completing || deleting"
+        @click="onDelete"
+      >{{ deleting ? 'Deleting…' : 'Delete' }}</button>
     </div>
+    <p v-if="errorMsg" class="m-0 text-dl-meta text-dl-magenta">{{ errorMsg }}</p>
+
+    <!-- Description -->
+    <section class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Description</span>
+      <p v-if="quest.description" class="m-0 whitespace-pre-wrap text-dl-body leading-relaxed text-dl-ink">{{ quest.description }}</p>
+      <p v-else class="m-0 text-dl-body text-dl-ink-faint">No description.</p>
+    </section>
+
+    <!-- Tags -->
+    <section v-if="quest.tags?.length" class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Tags</span>
+      <div class="flex flex-wrap gap-1.5">
+        <TagChip v-for="tag in quest.tags" :key="tag.id" :name="tag.name" :color="tag.color" />
+      </div>
+    </section>
+
+    <!-- Sub-quests -->
+    <section class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Sub-quests · {{ subTasks.length }}</span>
+      <div v-if="subTasks.length" class="flex flex-col gap-1">
+        <div v-for="st in subTasks" :key="st.id" class="flex items-center gap-2 border border-dl-hairline bg-dl-surface px-3 py-2">
+          <span class="min-w-0 flex-1 truncate text-dl-body" :class="st.status === 'active' ? 'text-dl-ink' : 'text-dl-ink-faint line-through'">{{ st.title }}</span>
+          <span
+            v-if="priorityMarker(st.priority)"
+            class="shrink-0 text-dl-meta leading-none"
+            :class="PRIORITY_DL_CLASS[st.priority]"
+            aria-hidden="true"
+          >{{ priorityMarker(st.priority)?.glyph }}</span>
+          <RankBadge :rank="st.difficulty" class="shrink-0" />
+          <button
+            v-if="st.status === 'active'"
+            type="button"
+            class="dl-focus-inset shrink-0 cursor-pointer border border-dl-grid-line bg-dl-surface px-2 py-1 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink"
+            @click="emit('edit', st, $event)"
+          >Edit</button>
+        </div>
+      </div>
+      <p v-else class="m-0 text-dl-body text-dl-ink-faint">No sub-quests.</p>
+    </section>
+
+    <!-- Details -->
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 border-t border-dl-band-line pt-4 font-dl-mono text-dl-label">
+      <dt class="uppercase tracking-wide text-dl-ink-muted">Priority</dt>
+      <dd class="m-0 flex items-center justify-end gap-1.5 text-dl-ink">
+        <span :class="PRIORITY_DL_CLASS[quest.priority]" aria-hidden="true">{{ priority.glyph }}</span>{{ priority.short }}
+      </dd>
+      <dt class="uppercase tracking-wide text-dl-ink-muted">Status</dt>
+      <dd class="m-0 text-right capitalize text-dl-ink">{{ quest.status }}</dd>
+      <dt class="uppercase tracking-wide text-dl-ink-muted">XP reward</dt>
+      <dd class="m-0 text-right text-dl-ink">+{{ quest.xpReward }} XP</dd>
+      <dt class="uppercase tracking-wide text-dl-ink-muted">Deadline</dt>
+      <dd class="m-0 text-right text-dl-ink">{{ deadlineLabel ?? '—' }}</dd>
+      <dt class="uppercase tracking-wide text-dl-ink-muted">Created</dt>
+      <dd class="m-0 text-right text-dl-ink">{{ createdLabel }}</dd>
+    </dl>
   </div>
 </template>

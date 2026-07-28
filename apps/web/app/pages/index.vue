@@ -222,21 +222,21 @@ const questGroups = computed<QuestGroup[]>(() => {
     </div>
 
     <!-- New-quest form modal. -->
-    <HubPanel
+    <DlModal
       v-if="showCreate"
-      title="New Quest"
+      title="New quest"
       :origin="createOrigin"
       @close="closeCreate"
     >
       <QuestForm mode="create" @created="onCreated" />
-    </HubPanel>
+    </DlModal>
 
-    <!-- Single-quest detail — wide two-pane modal. -->
-    <HubPanel
+    <!-- Single-quest detail. -->
+    <DlModal
       v-if="selectedQuest"
       title="Quest"
       :origin="detailOrigin"
-      :max-width="980"
+      :max-width="720"
       @close="closeDetail"
     >
       <QuestDetail
@@ -245,12 +245,12 @@ const questGroups = computed<QuestGroup[]>(() => {
         @deleted="onDetailDeleted"
         @edit="openEditQuest"
       />
-    </HubPanel>
+    </DlModal>
 
     <!-- Edit-quest modal — stacks above the detail modal when it's open. -->
-    <HubPanel
+    <DlModal
       v-if="editingQuest"
-      title="Edit Quest"
+      title="Edit quest"
       :origin="editOrigin"
       @close="closeEdit"
     >
@@ -260,6 +260,6 @@ const questGroups = computed<QuestGroup[]>(() => {
         @updated="onQuestEdited"
         @cancel="closeEdit"
       />
-    </HubPanel>
+    </DlModal>
   </div>
 </template>

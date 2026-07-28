@@ -65,3 +65,15 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* The "Reduce reward effects" setting (Status) forces the static path independently of the OS
+   setting. It stamps `.dl-reduce-motion` on <html>; the same near-instant guard applies, and
+   the reward code (step 4) reads the class to skip the chromatic split / full-surface flash. */
+:root.dl-reduce-motion *,
+:root.dl-reduce-motion *::before,
+:root.dl-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

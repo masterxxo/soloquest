@@ -4,7 +4,7 @@
 
 <template>
   <div class="flex flex-col gap-4">
-    <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Glossary</h1>
-    <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
+    <h1 class="m-0 font-dl-display text-dl-title font-semibold uppercase tracking-wide text-dl-ink">Glossary</h1>
+    <p class="m-0 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-faint">— Coming soon —</p>
   </div>
 </template>

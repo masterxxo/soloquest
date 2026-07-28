@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import type {
-  RecurringQuest,
   RecurringQuestWithStreak,
   RecurringCompleteResult,
   Achievement,
 } from '~/lib/api-client';
-import { rankColor } from '~/lib/ranks';
+import type { HeatState } from '~/components/HeatCell.vue';
 import { recurrenceLabel } from '~/lib/recurrence';
 import { useRecurringQuestActions } from '~/composables/useRecurringQuestActions';
 import { RECURRING_XP_REWARD } from '@soloquest/shared';
@@ -15,104 +14,92 @@ const emit = defineEmits<{
   completed: [result: RecurringCompleteResult];
   deleted: [id: string];
   achievementsEarned: [achievements: Achievement[]];
-  // Edit / open the detail — both bubble to the page, which owns the modals. `open`
-  // carries the full streak object so the detail can render it without a re-fetch.
-  edit: [quest: RecurringQuest, event: MouseEvent];
   open: [quest: RecurringQuestWithStreak, event: MouseEvent];
 }>();
 
-const color = computed(() => rankColor(props.quest.difficulty));
 const recurrence = computed(() => recurrenceLabel(props.quest));
 
-const { completing, deleting, errorMsg, onComplete, onDelete } = useRecurringQuestActions(
-  () => props.quest,
-  {
-    completed: (r) => emit('completed', r),
-    deleted: (id) => emit('deleted', id),
-    achievementsEarned: (a) => emit('achievementsEarned', a),
-  },
+// Card state → the checkbox and the leading stripe. Rituals are never "overdue"; the three
+// states are done-today / due-and-pending / not-due.
+const done = computed(() => props.quest.isCompletedToday);
+const due = computed(() => props.quest.isDueToday && !done.value);
+const stripeClass = computed(() =>
+  done.value ? 'bg-dl-lime' : due.value ? 'bg-dl-violet' : 'bg-dl-grid-line',
 );
+
+// The 7-day strip is a preview of the rolling window, never the source (the streak numeral is
+// the truth). The list payload doesn't carry per-day history, so only today's cell is live;
+// the earlier six render in their NOT SCHEDULED form as a preview.
+const todayState = computed<HeatState>(() =>
+  done.value ? 'done' : due.value ? 'today_pending' : 'not_scheduled',
+);
+const strip = computed<HeatState[]>(() => [
+  ...Array<HeatState>(6).fill('not_scheduled'),
+  todayState.value,
+]);
+const stripSummary = computed(() =>
+  done.value ? 'Done today' : due.value ? 'Today pending' : 'Not due today',
+);
+
+const { completing, errorMsg, onComplete } = useRecurringQuestActions(() => props.quest, {
+  completed: (r) => emit('completed', r),
+  deleted: (id) => emit('deleted', id),
+  achievementsEarned: (a) => emit('achievementsEarned', a),
+});
 </script>
 
 <template>
-  <article
-    class="flex items-start gap-3 rounded-none border border-line bg-[rgba(14,9,30,0.6)] px-[0.8rem] py-[0.6rem]"
-  >
-    <span
-      class="grid h-7 w-7 flex-none place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold [text-shadow:0_0_8px_currentColor]"
-      :style="{ color, borderColor: color }"
-    >
-      {{ quest.difficulty }}
-    </span>
+  <div class="flex flex-col">
+    <article class="relative flex min-h-[64px] items-center gap-3 border border-dl-hairline bg-dl-surface py-2 pl-3 pr-4">
+      <span class="absolute inset-y-0 left-0 w-[3px]" :class="stripeClass" aria-hidden="true" />
 
-    <div class="min-w-0 flex-auto">
-      <h3 class="m-0 text-[0.95rem] text-ink-soft">
-        <button
-          type="button"
-          class="m-0 cursor-pointer border-0 bg-transparent p-0 text-left text-inherit [font:inherit] hover:text-white hover:underline"
-          @click="emit('open', quest, $event)"
-        >
-          {{ quest.title }}
-        </button>
-      </h3>
-      <p class="mt-[0.15rem] text-[0.7rem] text-[#6a5da0]">🔁 {{ recurrence }}</p>
-      <p v-if="quest.description" class="mb-[0.3rem] mt-[0.2rem] line-clamp-2 text-[0.85rem] text-ink-muted">{{ quest.description }}</p>
-      <div class="flex flex-wrap gap-3 text-[0.75rem] text-ink-muted">
-        <span class="font-semibold text-accent-light">+{{ RECURRING_XP_REWARD }} XP</span>
-        <span class="text-[#f0903c]">
-          🔥 {{ quest.streak?.currentStreak ?? 0 }} streak ·
-          {{ quest.streak?.totalCompletions ?? 0 }} total
-        </span>
-      </div>
-      <p v-if="errorMsg" class="mt-[0.4rem] text-[0.75rem] text-danger-bright">{{ errorMsg }}</p>
-    </div>
-
-    <div class="flex flex-none items-center gap-[0.4rem]">
+      <!-- Checkbox — completes when due; static done/neutral otherwise. -->
       <button
-        class="cursor-pointer rounded-none border border-line bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-ink enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-        :disabled="completing || deleting"
-        @click="emit('edit', quest, $event)"
-      >
-        Edit
-      </button>
-
-      <!-- Already done today → static badge instead of a button. -->
-      <span
-        v-if="quest.isCompletedToday"
-        class="border border-[#1f5a3a] bg-[rgba(63,191,111,0.08)] px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-[#3fbf6f]"
-        >✓ Done today</span
-      >
-      <!-- Due and not yet done → live Complete button. Disabled while its own completion
-           is in flight (a second request would be a duplicate), with a pulsing outline so
-           the wait reads as "working", not merely as a dimmed button. -->
-      <button
-        v-else-if="quest.isDueToday"
-        class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-        :class="completing ? 'animate-pulse ring-1 ring-accent-soft' : ''"
-        :disabled="completing || deleting"
-        :aria-busy="completing"
+        v-if="due"
+        type="button"
+        role="checkbox"
+        :aria-checked="false"
+        :aria-label="`Complete ${quest.title}`"
+        :disabled="completing"
+        class="grid min-h-dl-touch min-w-dl-touch shrink-0 place-items-center md:min-h-0 md:min-w-0"
+        :class="completing ? 'animate-pulse' : 'cursor-pointer'"
         @click="onComplete"
       >
-        {{ completing ? '…' : 'Complete' }}
+        <span class="corner-cut-sm grid h-5 w-5 place-items-center border border-dl-band-line bg-dl-surface hover:border-dl-violet" />
       </button>
-      <!-- Not scheduled for today → disabled, with an explanatory tooltip. -->
-      <button
-        v-else
-        class="cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-white enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-        disabled
-        title="Not due today"
-      >
-        Complete
-      </button>
+      <span v-else class="grid min-h-dl-touch min-w-dl-touch shrink-0 place-items-center md:min-h-0 md:min-w-0" aria-hidden="true">
+        <span
+          v-if="done"
+          class="corner-cut-sm grid h-5 w-5 place-items-center border border-dl-lime bg-dl-lime/20 text-[0.7rem] leading-none text-dl-ink"
+        >✓</span>
+        <span v-else class="corner-cut-sm grid h-5 w-5 place-items-center border border-dashed border-dl-band-line" />
+      </span>
 
-      <button
-        class="cursor-pointer rounded-none border border-[#5a2740] bg-transparent px-[0.65rem] py-[0.35rem] text-[0.78rem] font-semibold text-danger-bright enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-[.55]"
-        :disabled="completing || deleting"
-        @click="onDelete"
-        aria-label="Delete ritual"
-      >
-        {{ deleting ? '…' : '✕' }}
-      </button>
-    </div>
-  </article>
+      <!-- Name + recurrence + preview strip -->
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
+        <button
+          type="button"
+          class="dl-focus-inset min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left text-dl-body text-dl-ink [font:inherit] hover:text-dl-violet"
+          @click="emit('open', quest, $event)"
+        >{{ quest.title }}</button>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">
+          <span>{{ recurrence }} · {{ RECURRING_XP_REWARD }} XP</span>
+          <span class="flex items-center gap-1.5">
+            <span class="flex gap-[2px]">
+              <HeatCell v-for="(s, i) in strip" :key="i" :state="s" :size="10" />
+            </span>
+            <span class="normal-case">{{ stripSummary }}</span>
+          </span>
+        </div>
+        <p v-if="errorMsg" class="m-0 text-dl-meta text-dl-magenta">{{ errorMsg }}</p>
+      </div>
+
+      <!-- Streak numeral — the truth, set like the level in the telemetry bar. -->
+      <div class="flex shrink-0 flex-col items-end leading-none">
+        <span class="font-dl-mono text-dl-numeral font-semibold text-dl-ink">{{ quest.streak?.currentStreak ?? 0 }}</span>
+        <span class="mt-0.5 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Day streak</span>
+        <span class="mt-1 font-dl-mono text-dl-label text-dl-ink-faint">longest {{ quest.streak?.longestStreak ?? 0 }} · total {{ quest.streak?.totalCompletions ?? 0 }}</span>
+      </div>
+    </article>
+  </div>
 </template>
