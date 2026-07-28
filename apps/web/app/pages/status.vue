@@ -5,17 +5,18 @@ import { useQuestsStore } from '~/stores/quests';
 import { useSignOut } from '~/composables/useSignOut';
 import { useUserSettings } from '~/composables/useUserSettings';
 import { client } from '~/lib/api-client';
+import {
+  STREAK_ACHIEVEMENT_THRESHOLDS,
+  TOTAL_ACHIEVEMENT_THRESHOLDS,
+  achievementLadder,
+} from '~/lib/achievements';
 
 const player = usePlayerStore();
 const quests = useQuestsStore();
-const { activeQuests } = storeToRefs(quests);
+const { activeQuests, recurringQuests } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
 
-// Lifetime completions, counted by the backend over the quest_completions event log —
-// so deleting a completed quest doesn't lower it. Client-side (RPC), like every other
-// authenticated call. A failed fetch leaves the tile at a placeholder instead of
-// breaking the page: the counter is decoration, not the reason to be here.
 const { data: questStats } = useAsyncData(
   'quest-stats',
   async () => {
@@ -24,117 +25,221 @@ const { data: questStats } = useAsyncData(
   },
   { server: false, default: () => null },
 );
-
 const completedCount = computed(() => questStats.value?.totalCompleted ?? null);
+const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId == null).length);
+const xpRemaining = computed(() => Math.max(0, player.xpForNext - player.progress.current));
 
-// Account settings — timezone picker. Status is the account hub, so it lives here.
+// Achievements are derived client-side (no read endpoint): a chip is unlocked when the best
+// value any ritual has reached clears its threshold. Streak → longest; total → completions.
+const bestLongest = computed(() =>
+  Math.max(0, ...recurringQuests.value.map((q) => q.streak?.longestStreak ?? 0)),
+);
+const bestTotal = computed(() =>
+  Math.max(0, ...recurringQuests.value.map((q) => q.streak?.totalCompletions ?? 0)),
+);
+const streakLadder = computed(() => achievementLadder(STREAK_ACHIEVEMENT_THRESHOLDS, bestLongest.value));
+const totalLadder = computed(() => achievementLadder(TOTAL_ACHIEVEMENT_THRESHOLDS, bestTotal.value));
+const unlockedCount = computed(
+  () => [...streakLadder.value, ...totalLadder.value].filter((c) => c.unlocked).length,
+);
+const totalAchievements = STREAK_ACHIEVEMENT_THRESHOLDS.length + TOTAL_ACHIEVEMENT_THRESHOLDS.length;
+
+// Placeholder attribute meters — the mechanic does not exist (NEEDS DOMAIN). Presentation only.
+const ATTRIBUTES = [
+  { key: 'STR', pct: 62 },
+  { key: 'INT', pct: 74 },
+  { key: 'AGI', pct: 48 },
+];
+
 const settings = useUserSettings();
-
 function onTimezoneChange(event: Event) {
   settings.setTimezone((event.target as HTMLSelectElement).value);
 }
 
-const activeCount = computed(() => activeQuests.value.filter((q) => q.parentId == null).length);
+// Reduce reward effects: a persisted client preference that forces the static path independently
+// of the OS setting. Toggling stamps a class on <html> that the reward code (and the motion
+// guard in tokens.css) reads.
+const reduceMotion = ref(false);
+function applyReduceMotion() {
+  if (!import.meta.client) return;
+  localStorage.setItem('dl-reduce-motion', reduceMotion.value ? '1' : '0');
+  document.documentElement.classList.toggle('dl-reduce-motion', reduceMotion.value);
+}
+onMounted(() => {
+  reduceMotion.value = localStorage.getItem('dl-reduce-motion') === '1';
+  applyReduceMotion();
+});
+watch(reduceMotion, applyReduceMotion);
 
-// Sign out lives here (not in the persistent nav): the mobile bottom bar has no room
-// for it, so Status is its single home across desktop and mobile.
 const { loggingOut, onSignOut } = useSignOut();
 </script>
 
 <template>
-  <div class="grid grid-cols-1 items-stretch gap-6 md:grid-cols-[minmax(220px,1fr)_minmax(220px,1.1fr)]">
-    <!-- Columns may shrink to 220px so the two-column view already fits at 768px (the
-         content frame is narrowest right at the md breakpoint); the 1fr / 1.1fr ratio is
-         unchanged, so the wide-desktop look stays the same. -->
-    <!-- Character stage: the full hunter figure with its drifting haze. The figure is
-         sized to the stage (object-contain, bottom-anchored) so the whole hunter —
-         face included — stays visible; HubCharacter's viewport-anchored positioning is
-         meant for the full-screen dashboard, not this framed panel. -->
-    <div class="relative min-h-[440px] overflow-hidden rounded-[8px] border border-line bg-panel bg-[radial-gradient(120%_90%_at_50%_10%,rgba(124,92,232,0.12),transparent_60%)]">
-      <SmokeCanvas :density="1.2" :speed="0.8" />
-      <!-- Whole figure, bottom-anchored and contained within the stage (never clipped). -->
-      <img
-        class="pointer-events-none absolute bottom-0 left-1/2 h-full max-w-full -translate-x-1/2 select-none object-contain object-bottom brightness-95 saturate-[1.05] drop-shadow-[0_0_40px_rgba(124,92,232,0.5)]"
-        src="/images/character.svg"
-        alt="Hunter character"
-      />
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dl-band-line pb-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">
+      <span class="text-dl-ink">Status</span>
+      <span class="normal-case text-dl-ink-faint">Profile, achievements, tags and settings.</span>
+      <span class="ml-auto border border-dl-gold bg-dl-gold/10 px-2 py-0.5 text-dl-ink">2 sections need domain confirmation</span>
     </div>
 
-    <!-- Stat sheet -->
-    <div class="flex flex-col gap-6">
-      <div class="flex flex-col gap-[0.35rem]">
-        <p class="m-0 text-[0.7rem] uppercase tracking-[0.32em] text-accent">[ status ]</p>
-        <p class="m-0 text-[1.7rem] font-bold text-ink-soft">{{ player.name ?? 'Hunter' }}</p>
-        <p class="m-0 text-[0.9rem] text-ink-dim">Rank <span class="inline-grid h-[1.4rem] w-[1.4rem] place-items-center rounded-[0.35rem] bg-accent font-extrabold text-white">{{ player.rank }}</span> · Level {{ player.level }}</p>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <div class="flex justify-between text-[0.85rem] text-ink-muted">
-          <span>XP</span>
-          <span>{{ player.progress.current }} / {{ player.xpForNext }}</span>
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <!-- ── Left column ─────────────────────────────────────────────────────────── -->
+      <div class="flex flex-col gap-4">
+        <!-- Profile -->
+        <div class="corner-cut grid grid-cols-[auto_1fr] gap-4 border border-dl-grid-line bg-dl-surface p-4">
+          <div class="corner-cut-sm grid h-28 w-28 place-items-center border border-dl-grid-line bg-dl-sunk p-2 text-center font-dl-mono text-[0.6rem] uppercase leading-tight tracking-wide text-dl-ink-faint">Operator portrait</div>
+          <div class="flex min-w-0 flex-col gap-2">
+            <div class="flex flex-col leading-none">
+              <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Operator</span>
+              <span class="truncate font-dl-display text-dl-title font-semibold text-dl-ink">{{ player.name ?? 'Hunter' }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex flex-col leading-none">
+                <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Level</span>
+                <span class="font-dl-display text-dl-numeral font-semibold text-dl-ink">{{ player.level }}</span>
+              </div>
+              <RankBadge :rank="player.rank" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <div class="flex justify-between font-dl-mono text-dl-label text-dl-ink-muted">
+                <span class="uppercase tracking-wide">XP to level {{ player.level + 1 }}</span>
+                <span class="text-dl-ink">{{ player.progress.current.toLocaleString() }} / {{ player.xpForNext.toLocaleString() }}</span>
+              </div>
+              <XpBar :percent="player.xpPct" />
+              <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ xpRemaining.toLocaleString() }} XP remaining</span>
+            </div>
+          </div>
         </div>
-        <XpBar :percent="player.xpPct" />
+
+        <!-- Quick counters -->
+        <div class="grid grid-cols-3 gap-3">
+          <div class="corner-cut flex flex-col items-center gap-1 border border-dl-grid-line bg-dl-surface py-3">
+            <span class="font-dl-display text-dl-title font-semibold text-dl-ink">{{ activeCount }}</span>
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Active</span>
+          </div>
+          <div class="corner-cut flex flex-col items-center gap-1 border border-dl-grid-line bg-dl-surface py-3">
+            <span class="font-dl-display text-dl-title font-semibold text-dl-magenta">{{ player.overdueCount }}</span>
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Overdue</span>
+          </div>
+          <div class="corner-cut flex flex-col items-center gap-1 border border-dl-grid-line bg-dl-surface py-3">
+            <span class="font-dl-display text-dl-title font-semibold text-dl-ink">{{ completedCount ?? '—' }}</span>
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Completed</span>
+          </div>
+        </div>
+
+        <RankLadder />
+
+        <!-- Attributes (NEEDS DOMAIN) -->
+        <section class="corner-cut flex flex-col gap-3 border border-dl-grid-line bg-dl-surface p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Attributes · STR / INT / AGI</span>
+            <span class="border border-dl-gold bg-dl-gold/10 px-2 py-0.5 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink">Placeholder values</span>
+          </div>
+          <p class="m-0 flex gap-2 border border-dl-gold bg-dl-gold/10 px-3 py-2 text-dl-meta text-dl-ink">
+            <span aria-hidden="true" class="text-dl-gold">!</span>
+            Needs domain confirmation — mechanic does not exist. No STR/INT/AGI fields or deriving rule exist; this block is presentation only.
+          </p>
+          <div v-for="attr in ATTRIBUTES" :key="attr.key" class="flex flex-col gap-1">
+            <div class="flex justify-between font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">
+              <span>{{ attr.key }}</span>
+              <span class="text-dl-ink-faint underline decoration-dashed underline-offset-2">—</span>
+            </div>
+            <div class="h-2 overflow-hidden bg-dl-sunk"><div class="h-full bg-dl-ink-faint" :style="{ width: `${attr.pct}%` }" /></div>
+            <span class="font-dl-mono text-[0.6rem] uppercase tracking-wide text-dl-ink-faint">Source undefined</span>
+          </div>
+        </section>
       </div>
 
-      <!-- Four tiles: 2×2 rather than a single row — the column can shrink to 220px, where
-           four abreast would crush the labels. -->
-      <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-ink">{{ activeCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Active quests</span></div>
-        <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-ink">{{ player.todayCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Due today</span></div>
-        <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-danger-line bg-danger-bg/70 p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-danger">{{ player.overdueCount }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Overdue</span></div>
-        <div class="flex flex-col gap-[0.2rem] rounded-[8px] border border-line bg-[rgba(26,17,64,0.6)] p-[0.85rem] text-center"><span class="text-[1.5rem] font-bold text-accent-soft">{{ completedCount ?? '—' }}</span><span class="text-[0.68rem] uppercase tracking-[0.05em] text-ink-muted">Completed</span></div>
-      </div>
+      <!-- ── Right column ────────────────────────────────────────────────────────── -->
+      <div class="flex flex-col gap-4">
+        <!-- Achievements -->
+        <section class="corner-cut flex flex-col gap-4 border border-dl-grid-line bg-dl-surface p-4">
+          <div class="flex items-center justify-between">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Achievements</span>
+            <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ unlockedCount }} of {{ totalAchievements }} unlocked</span>
+          </div>
 
-      <section>
-        <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Achievements</h2>
-        <p class="m-0 text-[0.85rem] text-line-soft">— Coming soon —</p>
-      </section>
+          <div class="flex flex-col gap-2">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Streak · best {{ bestLongest }} days</span>
+            <div class="flex flex-wrap gap-2">
+              <div
+                v-for="chip in streakLadder"
+                :key="chip.threshold"
+                class="corner-cut-sm flex flex-col items-center gap-0.5 border px-3 py-1.5"
+                :class="chip.unlocked ? 'border-dl-gold bg-dl-gold/10 text-dl-ink' : 'border-dl-hairline text-dl-ink-faint'"
+              >
+                <span class="font-dl-display text-dl-body font-semibold">{{ chip.threshold }}</span>
+                <span class="font-dl-mono text-[0.55rem] uppercase tracking-wide">{{ chip.unlocked ? 'days' : 'pending' }}</span>
+              </div>
+            </div>
+          </div>
 
-      <TagManager />
+          <div class="flex flex-col gap-2">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Total completions · best {{ bestTotal }}</span>
+            <div class="flex flex-wrap gap-2">
+              <div
+                v-for="chip in totalLadder"
+                :key="chip.threshold"
+                class="corner-cut-sm flex flex-col items-center gap-0.5 border px-3 py-1.5"
+                :class="chip.unlocked ? 'border-dl-gold bg-dl-gold/10 text-dl-ink' : 'border-dl-hairline text-dl-ink-faint'"
+              >
+                <span class="font-dl-display text-dl-body font-semibold">{{ chip.threshold }}</span>
+                <span class="font-dl-mono text-[0.55rem] uppercase tracking-wide">{{ chip.unlocked ? 'done' : 'pending' }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <!-- Account settings. Timezone drives the "required day" in ritual heatmaps and
-           the daily cron, so it's functional, not cosmetic. Saved on change. -->
-      <section>
-        <h2 class="mx-0 mb-[0.6rem] mt-0 text-[0.75rem] uppercase tracking-[0.18em] text-[#6a5da0]">Settings</h2>
-        <label class="flex flex-col gap-[0.4rem] text-[0.75rem] text-ink-muted">
-          <span class="flex items-center gap-2">
-            Timezone
-            <span class="text-ink-dim">· {{ settings.currentOffset.value || '—' }}</span>
-          </span>
-          <div class="flex items-center gap-2">
-            <select
-              :value="settings.timezone.value"
-              :disabled="settings.saving.value || settings.loading.value"
-              class="min-w-0 flex-1 rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              @change="onTimezoneChange"
-            >
-              <option v-for="tz in settings.timezones.value" :key="tz" :value="tz">{{ tz }}</option>
-            </select>
+        <TagManager />
+
+        <!-- Settings -->
+        <section class="corner-cut flex flex-col gap-4 border border-dl-grid-line bg-dl-surface p-4">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Settings</span>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink">Time zone <span class="text-dl-ink-faint">· {{ settings.currentOffset.value || '—' }}</span></span>
+            <p class="m-0 text-dl-meta text-dl-ink-muted">Decides which calendar day a completion belongs to — and therefore every streak, heatmap cell and date group.</p>
+            <div class="flex items-center gap-2">
+              <select
+                :value="settings.timezone.value"
+                :disabled="settings.saving.value || settings.loading.value"
+                class="dl-focus-inset min-w-0 flex-1 border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none disabled:opacity-60"
+                @change="onTimezoneChange"
+              >
+                <option v-for="tz in settings.timezones.value" :key="tz" :value="tz">{{ tz }}</option>
+              </select>
+              <button
+                type="button"
+                :disabled="settings.saving.value || settings.loading.value"
+                class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-3 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink disabled:opacity-60"
+                @click="settings.detect()"
+              >Detect</button>
+            </div>
+            <p class="m-0 font-dl-mono text-[0.6rem] uppercase tracking-wide text-dl-ink-faint">Changing it does not rewrite history · past entries keep their recorded day</p>
+            <p v-if="settings.saveError.value" class="m-0 text-dl-meta text-dl-magenta">{{ settings.saveError.value }}</p>
+            <p v-else-if="settings.justSaved.value" class="m-0 text-dl-meta text-dl-cyan">Saved</p>
+          </div>
+
+          <label class="flex cursor-pointer items-start justify-between gap-3">
+            <span class="flex flex-col gap-0.5">
+              <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink">Reduce reward effects</span>
+              <span class="text-dl-meta text-dl-ink-muted">Forces the static reward path — no chromatic split, no full-surface inversion — independently of the OS reduced-motion setting.</span>
+            </span>
+            <input v-model="reduceMotion" type="checkbox" class="dl-focus-inset mt-1 h-5 w-5 shrink-0 cursor-pointer accent-dl-violet" />
+          </label>
+
+          <div class="flex flex-col gap-0.5">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink">Sign out</span>
+            <p class="m-0 text-dl-meta text-dl-ink-muted">Ends this session on this device. Nothing is deleted.</p>
             <button
               type="button"
-              :disabled="settings.saving.value || settings.loading.value"
-              class="flex-none cursor-pointer rounded-none border border-line bg-transparent px-[0.7rem] py-[0.55rem] font-[inherit] text-[0.8rem] font-semibold text-ink transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-              @click="settings.detect()"
-            >
-              Detect
-            </button>
+              class="dl-focus-inset mt-1 min-h-dl-touch w-full cursor-pointer border border-dl-grid-line bg-dl-surface px-4 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted transition-colors enabled:hover:border-dl-magenta enabled:hover:text-dl-magenta disabled:opacity-60"
+              :disabled="loggingOut"
+              @click="onSignOut"
+            >{{ loggingOut ? 'Signing out…' : 'Sign out' }}</button>
           </div>
-          <!-- Discreet, mutually-exclusive status line under the control. -->
-          <p v-if="settings.saveError.value" class="m-0 text-[0.75rem] text-danger-bright">{{ settings.saveError.value }}</p>
-          <p v-else-if="settings.loadError.value" class="m-0 text-[0.75rem] text-gold">Couldn't load settings — showing default (UTC).</p>
-          <p v-else-if="settings.justSaved.value" class="m-0 text-[0.75rem] text-accent-soft">Saved</p>
-        </label>
-      </section>
-
-      <!-- Sign out only on mobile — on desktop it lives in the persistent nav rail. -->
-      <button
-        type="button"
-        class="mt-auto inline-flex min-h-[44px] w-full items-center justify-center rounded-[8px] border border-line bg-transparent px-4 py-2 text-[0.85rem] font-semibold text-ink-dim font-[inherit] transition-colors enabled:hover:border-danger-line enabled:hover:text-danger disabled:cursor-not-allowed disabled:opacity-60 md:hidden"
-        :disabled="loggingOut"
-        @click="onSignOut"
-      >
-        {{ loggingOut ? 'Signing out…' : 'Sign out' }}
-      </button>
+        </section>
+      </div>
     </div>
   </div>
 </template>

@@ -1,95 +1,70 @@
 <script setup lang="ts">
 import { MAX_BACKFILL_DAYS } from '@soloquest/shared';
 import type { RecurringCalendarDay } from '~/lib/api-client';
+import type { HeatState } from '~/components/HeatCell.vue';
 
-// Completion calendar (GitHub-style heatmap). The backend is the source of truth for each
-// day's status (the `calendar` field from /stats) — here we lay days out into weekly
-// columns, paint them, and make a due-but-missed day inside the backfill window clickable
-// so the player can mark it done after the fact.
+// Per-ritual completion heatmap. The backend is the source of truth for each day's status
+// (done / missed / not_scheduled); this lays days into weekly columns and maps them onto the
+// shared HeatCell form vocabulary. Five of the six states are reachable from current data —
+// DONE, MISSED, NOT SCHEDULED, REPAIRABLE (missed inside the backfill window) and TODAY
+// PENDING (today, due, not yet done). BACKFILLED and THRESHOLD are defined forms in HeatCell
+// but need calendar data the /stats contract doesn't carry yet, so they aren't fed here.
 const props = defineProps<{
   calendar: RecurringCalendarDay[];
-  // Date currently being backfilled (in flight), so its cell can show a pending state.
+  // Whether today is a due day — lets today's neutral cell read as "pending" rather than
+  // "not scheduled" (the calendar can't distinguish them: today is never "missed").
+  todayDue?: boolean;
   pendingDate?: string | null;
-  // True while any completion for this ritual is in flight — suppresses new clicks.
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ backfill: [date: string] }>();
 
 type Status = RecurringCalendarDay['status'];
-
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-// Weekday labels: only selected rows (Mo/We/Fr/Su), the rest are blank.
-const DAY_LABELS = ['Mo', '', 'We', '', 'Fr', '', 'Su'];
-
-// The dimmed "not scheduled" cell — a lighter fill + hairline border so the cell stays
-// legible even over the animated smoke background (the fill alone blended into the palette).
-// Future filler cells (on the right) get the same look.
-const NOT_SCHEDULED_CLASS = 'bg-[#2a2352] border border-line-soft';
-const STATUS_CLASS: Record<Status, string> = {
-  done: 'bg-accent',
-  missed: 'bg-danger-bg border border-danger-line',
-  not_scheduled: NOT_SCHEDULED_CLASS,
-};
-
-// The calendar draws dimmed filler weeks ahead so it doesn't end in emptiness and fills the
-// panel width. This is purely frontend cosmetics — the backend returns no future days.
-const MIN_FUTURE_WEEKS = 5; // always at least this many weeks past today
-const TARGET_WEEKS = 26; // aim for this many columns total (tops up filler for fresh rituals)
-const STATUS_LABEL: Record<Status, string> = {
-  done: 'Done',
-  missed: 'Missed',
-  not_scheduled: 'Not scheduled',
-};
+const DAY_LABELS = ['M', '', 'W', '', 'F', '', 'S'];
+const CELL = 16;
 
 interface Cell {
-  date: string | null; // null → empty padding cell (before the window start), transparent
+  date: string | null;
   status: Status | null;
   isToday: boolean;
-  future: boolean; // a day past today → dimmed filler, no status
 }
 interface Week {
-  cells: Cell[]; // length 7, index 0 = Monday
-  monthLabel: string | null; // month label above the column (shown when the month changes)
+  cells: Cell[];
+  monthLabel: string | null;
 }
 
-/** Parses 'YYYY-MM-DD' into a Date at UTC midnight — consistent with the backend's dates. */
 function parseUtc(value: string): Date {
   const [y, m, d] = value.split('-').map(Number);
-  // value is always a 'YYYY-MM-DD' string from the backend, so all parts are present.
   return new Date(Date.UTC(y!, m! - 1, d!));
 }
-/** Formats a Date back to 'YYYY-MM-DD' using its UTC components. */
 function formatUtc(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
-/** Monday of the week containing `date` (0=Mon … 6=Sun). */
 function mondayOf(date: Date): Date {
   const dow = (date.getUTCDay() + 6) % 7;
   return new Date(date.getTime() - dow * MS_PER_DAY);
 }
 
+// Weeks from the window start's Monday up to (and including) today — no future filler, so
+// today is the last real column and pins to the right edge on mobile.
 const weeks = computed<Week[]>(() => {
   const cal = props.calendar;
   if (!cal.length) return [];
-
   const statusByDate = new Map<string, Status>(cal.map((d) => [d.date, d.status]));
   const first = parseUtc(cal[0]!.date);
-  const todayStr = cal[cal.length - 1]!.date; // last element = today (no future days)
+  const todayStr = cal[cal.length - 1]!.date;
   const todayTime = parseUtc(todayStr).getTime();
-  const gridStart = mondayOf(first).getTime(); // align the start to a Monday
-  // Column count through the week containing "today", and how many we render in total (with filler).
-  const weeksThroughToday =
-    Math.round((mondayOf(parseUtc(todayStr)).getTime() - gridStart) / (7 * MS_PER_DAY)) + 1;
-  const totalWeeks = Math.max(TARGET_WEEKS, weeksThroughToday + MIN_FUTURE_WEEKS);
+  const gridStart = mondayOf(first).getTime();
+  const totalWeeks = Math.round((mondayOf(parseUtc(todayStr)).getTime() - gridStart) / (7 * MS_PER_DAY)) + 1;
 
   const result: Week[] = [];
   let cursor = gridStart;
   let prevMonth = -1;
-
   for (let w = 0; w < totalWeeks; w++) {
     const cells: Cell[] = [];
     let mondayDate: Date | null = null;
@@ -98,24 +73,13 @@ const weeks = computed<Week[]>(() => {
       if (row === 0) mondayDate = dt;
       const time = dt.getTime();
       const ds = formatUtc(dt);
-      if (time < first.getTime()) {
-        // Days before the window (at the start of the first week) → empty, transparent.
-        cells.push({ date: null, status: null, isToday: false, future: false });
-      } else if (time <= todayTime) {
-        // A real day — its status comes from the backend.
-        cells.push({
-          date: ds,
-          status: statusByDate.get(ds) ?? null,
-          isToday: ds === todayStr,
-          future: false,
-        });
+      if (time < first.getTime() || time > todayTime) {
+        cells.push({ date: null, status: null, isToday: false });
       } else {
-        // A future day → dimmed filler ("not scheduled" look, no status).
-        cells.push({ date: ds, status: null, isToday: false, future: true });
+        cells.push({ date: ds, status: statusByDate.get(ds) ?? null, isToday: ds === todayStr });
       }
       cursor += MS_PER_DAY;
     }
-    // Month label shown when the column's Monday falls in a different month than the previous one.
     const month = mondayDate!.getUTCMonth();
     result.push({ cells, monthLabel: month !== prevMonth ? MONTHS[month]! : null });
     prevMonth = month;
@@ -123,27 +87,6 @@ const weeks = computed<Week[]>(() => {
   return result;
 });
 
-function cellClass(cell: Cell): string {
-  if (!cell.date) return 'bg-transparent'; // padding before the window
-  if (cell.future) return NOT_SCHEDULED_CLASS; // future filler — no "today" ring
-  const base = cell.status ? STATUS_CLASS[cell.status] : NOT_SCHEDULED_CLASS;
-  const parts = [cell.isToday ? `${base} ring-1 ring-accent-soft` : base];
-  if (cell.date === props.pendingDate) parts.push('animate-pulse ring-1 ring-accent-soft');
-  else if (isClickable(cell)) parts.push('cursor-pointer hover:brightness-150 hover:ring-1 hover:ring-accent-soft');
-  return parts.join(' ');
-}
-function cellTitle(cell: Cell): string {
-  if (!cell.date) return '';
-  const [, m, d] = cell.date.split('-');
-  // Future (filler) days have no status — show just the date, without a misleading label.
-  if (cell.future || !cell.status) return `${d}.${m}`;
-  const base = `${d}.${m} — ${STATUS_LABEL[cell.status]}`;
-  return isClickable(cell) ? `${base} · Click to mark as done` : base;
-}
-
-// Oldest day still inside the backfill window: today − MAX_BACKFILL_DAYS. Today is the
-// calendar's last cell (the backend never returns future days). A missed day is clickable
-// when it is on/after that bound — mirrors the server's isWithinBackfillWindow exactly.
 const lastCalendarDate = computed(() => props.calendar.at(-1)?.date ?? null);
 const earliestBackfill = computed(() =>
   lastCalendarDate.value
@@ -151,8 +94,6 @@ const earliestBackfill = computed(() =>
     : null,
 );
 
-// Only a *missed* day (a closed, required, uncompleted day — never today, done, future or
-// not-scheduled) can be backfilled, and only within the window.
 function isClickable(cell: Cell): boolean {
   return (
     !props.disabled &&
@@ -162,76 +103,127 @@ function isClickable(cell: Cell): boolean {
     cell.date >= earliestBackfill.value
   );
 }
-function cellAriaLabel(cell: Cell): string {
+
+function cellState(cell: Cell): HeatState {
+  if (cell.status === 'done') return 'done';
+  if (cell.status === 'missed') return isClickable(cell) ? 'repairable' : 'missed';
+  // not_scheduled (or unknown): today reads as pending only when it's actually a due day.
+  if (cell.isToday && props.todayDue) return 'today_pending';
+  return 'not_scheduled';
+}
+
+const STATE_LABEL: Record<HeatState, string> = {
+  done: 'done',
+  missed: 'missed',
+  not_scheduled: 'not scheduled',
+  repairable: 'missed — click to mark done',
+  backfilled: 'backfilled',
+  threshold: 'done — streak milestone',
+  today_pending: 'today, pending',
+};
+function cellTitle(cell: Cell): string {
   if (!cell.date) return '';
-  if (cell.future || !cell.status) return cell.date;
-  const state = isClickable(cell) ? 'missed, mark as done' : STATUS_LABEL[cell.status].toLowerCase();
-  return `${cell.date}: ${state}`;
+  const [, m, d] = cell.date.split('-');
+  return `${d}.${m} — ${STATE_LABEL[cellState(cell)]}`;
+}
+function cellAria(cell: Cell): string {
+  return cell.date ? `${cell.date}: ${STATE_LABEL[cellState(cell)]}` : '';
 }
 function onCellClick(cell: Cell): void {
   if (isClickable(cell) && cell.date) emit('backfill', cell.date);
 }
+
+// Repairable days, newest first — the touch path (the grid cells are pointer targets).
+const repairable = computed(() =>
+  props.calendar
+    .filter((d) => isClickable({ date: d.date, status: d.status, isToday: false }))
+    .map((d) => d.date)
+    .reverse(),
+);
+function shortDate(ds: string): string {
+  const [, m, d] = ds.split('-').map(Number);
+  return `${d} ${MONTHS[(m! - 1)]}`;
+}
+
+// Scroll the grid to the right (today) on mount — mobile shows the most recent weeks first.
+const scrollEl = ref<HTMLElement | null>(null);
+onMounted(() => {
+  nextTick(() => {
+    if (scrollEl.value) scrollEl.value.scrollLeft = scrollEl.value.scrollWidth;
+  });
+});
 </script>
 
 <template>
-  <div v-if="weeks.length" class="overflow-x-auto">
-    <div class="inline-flex flex-col gap-[5px]">
-      <!-- Month labels above the columns (the left spacer aligns them with the day labels). -->
-      <div class="flex gap-[3px] text-[9px] leading-none text-ink-muted">
-        <div class="w-6 shrink-0" />
-        <div v-for="(week, wi) in weeks" :key="wi" class="w-3 shrink-0 whitespace-nowrap">
-          {{ week.monthLabel }}
+  <div v-if="weeks.length" class="flex flex-col gap-3">
+    <div ref="scrollEl" class="overflow-x-auto">
+      <div class="inline-flex flex-col gap-[3px]">
+        <!-- Month labels -->
+        <div class="flex gap-[3px] font-dl-mono text-[9px] leading-none text-dl-ink-muted">
+          <div class="w-3 shrink-0" />
+          <div v-for="(week, wi) in weeks" :key="wi" class="shrink-0 whitespace-nowrap" :style="{ width: `${CELL}px` }">{{ week.monthLabel }}</div>
         </div>
-      </div>
-
-      <!-- Body: the day-label column + the week columns. -->
-      <div class="flex gap-[3px]">
-        <div class="flex w-6 shrink-0 flex-col gap-[3px] text-[9px] leading-none text-ink-muted">
-          <div v-for="(label, ri) in DAY_LABELS" :key="ri" class="flex h-3 items-center">
-            {{ label }}
+        <!-- Day-label column + week columns -->
+        <div class="flex gap-[3px]">
+          <div class="flex w-3 shrink-0 flex-col gap-[3px] font-dl-mono text-[9px] leading-none text-dl-ink-muted">
+            <div v-for="(label, ri) in DAY_LABELS" :key="ri" class="flex items-center" :style="{ height: `${CELL}px` }">{{ label }}</div>
           </div>
-        </div>
-
-        <div v-for="(week, wi) in weeks" :key="wi" class="flex flex-col gap-[3px]">
-          <template v-for="(cell, ri) in week.cells" :key="ri">
-            <!-- A due-but-missed day inside the backfill window: a real button so it's
-                 reachable by keyboard and announced with its date + state. -->
-            <button
-              v-if="isClickable(cell)"
-              type="button"
-              class="h-3 w-3 rounded-[2px] border-0 p-0"
-              :class="cellClass(cell)"
-              :title="cellTitle(cell)"
-              :aria-label="cellAriaLabel(cell)"
-              :disabled="disabled"
-              @click="onCellClick(cell)"
-            />
-            <!-- Every other day: display only. -->
-            <div
-              v-else
-              class="h-3 w-3 rounded-[2px]"
-              :class="cellClass(cell)"
-              :title="cellTitle(cell)"
-            />
-          </template>
+          <div v-for="(week, wi) in weeks" :key="wi" class="flex flex-col gap-[3px]">
+            <template v-for="(cell, ri) in week.cells" :key="ri">
+              <span v-if="!cell.date" class="inline-block shrink-0" :style="{ width: `${CELL}px`, height: `${CELL}px` }" />
+              <button
+                v-else-if="cellState(cell) === 'repairable'"
+                type="button"
+                class="dl-focus-outset rounded-[2px] border-0 bg-transparent p-0 hover:brightness-95"
+                :class="cell.date === pendingDate ? 'animate-pulse' : 'cursor-pointer'"
+                :title="cellTitle(cell)"
+                :aria-label="cellAria(cell)"
+                :disabled="disabled"
+                @click="onCellClick(cell)"
+              >
+                <HeatCell state="repairable" :size="CELL" />
+              </button>
+              <span v-else :title="cellTitle(cell)" :aria-label="cellAria(cell)">
+                <HeatCell :state="cellState(cell)" :size="CELL" />
+              </span>
+            </template>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Legend. -->
-    <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.7rem] text-ink-muted">
-      <span class="flex items-center gap-1.5">
-        <span class="h-3 w-3 rounded-[2px] bg-accent" />Done
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="h-3 w-3 rounded-[2px] border border-danger-line bg-danger-bg" />Missed
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="h-3 w-3 rounded-[2px]" :class="NOT_SCHEDULED_CLASS" />Not scheduled
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="h-3 w-3 rounded-[2px] ring-1 ring-accent-soft" :class="NOT_SCHEDULED_CLASS" />Today
-      </span>
+    <!-- Legend — the same forms, at rest. -->
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 font-dl-mono text-dl-label text-dl-ink-muted">
+      <span class="flex items-center gap-1.5"><HeatCell state="done" :size="12" />Done</span>
+      <span class="flex items-center gap-1.5"><HeatCell state="missed" :size="12" />Missed</span>
+      <span class="flex items-center gap-1.5"><HeatCell state="not_scheduled" :size="12" />Not scheduled</span>
+      <span class="flex items-center gap-1.5"><HeatCell state="repairable" :size="12" />Repairable</span>
+      <span class="flex items-center gap-1.5"><HeatCell state="backfilled" :size="12" />Backfilled</span>
+      <span class="flex items-center gap-1.5"><HeatCell state="threshold" :size="12" />Threshold</span>
+    </div>
+
+    <!-- Touch repair path: the grid cells are 16px pointer targets, so on small screens the
+         repairable days are also offered as full-width rows. -->
+    <div v-if="repairable.length" class="flex flex-col gap-1 md:hidden">
+      <div
+        v-for="date in repairable"
+        :key="date"
+        class="flex h-[60px] items-center justify-between border border-dl-hairline bg-dl-surface px-3"
+      >
+        <span class="flex items-center gap-2 text-dl-body text-dl-ink">
+          <HeatCell state="repairable" :size="16" />
+          {{ shortDate(date) }}
+        </span>
+        <button
+          type="button"
+          class="dl-focus-inset min-h-dl-touch cursor-pointer bg-dl-violet px-4 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white disabled:opacity-50"
+          :class="date === pendingDate ? 'animate-pulse' : ''"
+          :disabled="disabled"
+          @click="emit('backfill', date)"
+        >
+          Mark done
+        </button>
+      </div>
     </div>
   </div>
 </template>

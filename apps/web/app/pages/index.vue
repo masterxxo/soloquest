@@ -1,54 +1,23 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import {
-  client,
-  type Quest,
-  type QuestWithWarnings,
-  type CompleteResult,
-} from '~/lib/api-client';
-import { readApiError } from '~/lib/api-error';
+import type { Quest, QuestWithWarnings, CompleteResult } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
-import { useFeedbackStore } from '~/stores/feedback';
 import { useEntityModals } from '~/composables/useEntityModals';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useQuestFilters } from '~/composables/useQuestFilters';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
-const feedback = useFeedbackStore();
 const { activeQuests } = storeToRefs(quests);
 
 // Counts/lists come from the shared store; the layout already loaded them, but calling
 // load() here too makes the page safe to hit directly (it self-guards re-fetches).
 onMounted(() => { quests.load(); });
 
-// ── Quick-add ─────────────────────────────────────────────────────────────────
-// A title-only capture: posts an E-rank quest (description mirrors the title) so it
-// lands in STANDING ORDERS immediately. The full form is one click away for details.
-// `quickAdding` is a plain local ref (not the store's per-id completion guard): there is
-// exactly one quick-add input, and the quest it creates has no id to key a guard on yet.
-const quickTitle = ref('');
-const quickAdding = ref(false);
-async function quickAdd() {
-  const title = quickTitle.value.trim();
-  if (!title || quickAdding.value) return;
-  quickAdding.value = true;
-  try {
-    const res = await client.api.quests.$post({
-      json: { title, description: title, difficulty: 'E', deadline: null },
-    });
-    if (!res.ok) {
-      // Say what went wrong and keep the typed title — the quest doesn't exist, so
-      // clearing the input would throw the player's text away for nothing.
-      const { message } = await readApiError(res, 'Could not create quest.');
-      feedback.showNotice([message], 'warning');
-      return;
-    }
-    quests.addQuest(await res.json());
-    quickTitle.value = '';
-  } finally {
-    quickAdding.value = false;
-  }
+// Quick-add owns its own POST (rich capture: rank + deadline + tags) and hands the created
+// quest back for the store to fold in — the same shape the New Quest modal emits.
+function onQuickCreated(result: QuestWithWarnings) {
+  quests.addQuest(result);
 }
 
 // ── Modals: create / detail / edit ──────────────────────────────────────────────
@@ -154,9 +123,9 @@ const questGroups = computed<QuestGroup[]>(() => {
     const [y, m, day] = key.split('-').map(Number);
     const d = new Date(y!, m! - 1, day!);
     const datePart = formatDate(d, { day: 'numeric', month: 'short' }).toUpperCase();
-    const weekday = formatDate(d, { weekday: 'long' }).toUpperCase();
-    const label =
-      key === todayKey ? `TODAY · ${datePart} · ${weekday}` : `${datePart} · ${weekday}`;
+    const weekday = formatDate(d, { weekday: 'short' }).toUpperCase();
+    // Today reads simply "TODAY"; other days read "FRI · 25 JUL" (weekday · date).
+    const label = key === todayKey ? 'TODAY' : `${weekday} · ${datePart}`;
     groups.push({ key, label, isOverdue: false, quests: bucket });
   }
 
@@ -170,93 +139,104 @@ const questGroups = computed<QuestGroup[]>(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
-    <header class="flex flex-wrap items-center justify-between gap-4">
-      <h1 class="m-0 text-[1.1rem] font-bold uppercase tracking-[0.1em] text-ink-bright">Quests</h1>
-      <form class="flex items-center gap-2" @submit.prevent="quickAdd">
-        <input
-          v-model="quickTitle"
-          type="text"
-          class="min-w-[200px] border border-line bg-[rgba(14,9,30,0.7)] px-[0.7rem] py-[0.4rem] text-[0.85rem] text-ink-soft font-[inherit] focus:border-accent focus:outline-none"
-          placeholder="Quick add a quest…"
-          maxlength="255"
-        />
-        <button
-          type="submit"
-          class="cursor-pointer border border-accent bg-accent/12 px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] enabled:hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="quickAdding || !quickTitle.trim()"
-        >
-          Add
-        </button>
-        <button
-          type="button"
-          class="cursor-pointer border border-line bg-transparent px-[0.7rem] py-[0.4rem] text-[0.8rem] font-semibold text-ink font-[inherit] hover:border-accent"
-          @click="openCreate"
-        >+ New Quest <span class="ml-1 text-[0.7rem] font-normal text-ink-dim">(q)</span></button>
-      </form>
-    </header>
+  <div class="flex flex-col gap-4">
+    <!-- A discreet way to the full New Quest form (description, parent, sub-tasks); the fast
+         path is the inline quick-add below. Also reachable with the `q` shortcut. -->
+    <div class="flex justify-end">
+      <button
+        type="button"
+        class="dl-focus-inset flex cursor-pointer items-center gap-1.5 border border-dl-grid-line bg-dl-surface px-3 py-1.5 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted transition-colors hover:bg-dl-sunk hover:text-dl-ink"
+        @click="openCreate"
+      >
+        + New quest
+        <kbd class="border border-dl-hairline px-1 text-[0.6rem] normal-case text-dl-ink-faint">q</kbd>
+      </button>
+    </div>
+
+    <!-- Hidden when there is nothing to filter, so an empty board stays an empty board
+         rather than a set of controls over nothing. -->
+    <QuestFilterBar
+      v-if="baseQuests.length"
+      :shown="visibleQuests.length"
+      :total="baseQuests.length"
+    />
+
+    <QuestQuickAdd @created="onQuickCreated" />
 
     <div class="flex flex-col gap-5">
-      <!-- Hidden when there is nothing to filter, so an empty board stays an empty board
-           rather than a set of controls over nothing. -->
-      <QuestFilterBar
-        v-if="baseQuests.length"
-        :shown="visibleQuests.length"
-        :total="baseQuests.length"
-      />
-
-      <section v-for="group in questGroups" :key="group.key" class="flex flex-col gap-2">
-        <div
-          class="border-b pb-[0.4rem] text-[0.7rem] uppercase tracking-[0.18em]"
-          :class="group.isOverdue ? 'border-[rgba(192,84,58,0.3)] text-[#c0543a]' : 'border-line-soft/30 text-line-soft'"
-        >
-          {{ group.label }}
+      <section v-for="group in questGroups" :key="group.key" class="flex flex-col gap-1.5">
+        <div class="flex items-center gap-2 border-b border-dl-band-line pb-1">
+          <span
+            class="font-dl-mono text-dl-label uppercase tracking-wide"
+            :class="group.isOverdue ? 'text-dl-magenta' : 'text-dl-ink-muted'"
+          >{{ group.label }}</span>
+          <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ group.quests.length }}</span>
         </div>
-        <div class="flex flex-col gap-2">
-          <QuestCard
+        <div class="flex flex-col gap-1">
+          <QuestRow
             v-for="q in group.quests"
             :key="q.id"
             :quest="q"
             selectable
             :show-sub-tasks="!hideSubTasks"
             @open="openQuestDetail"
-            @edit="openEditQuest"
             @completed="onCompleted"
             @deleted="onDeleted"
           />
         </div>
       </section>
-      <p v-if="!baseQuests.length" class="m-0 text-[0.85rem] text-line-soft">No active quests. Add your first above.</p>
-      <!-- There are quests, but every one of them is of a rank the player hasn't lit —
-           say so and offer the way out. -->
-      <p v-else-if="!questGroups.length" class="m-0 flex flex-wrap items-center gap-2 text-[0.85rem] text-line-soft">
-        Nothing matches these filters
+
+      <!-- First run: no quests at all. -->
+      <div
+        v-if="!baseQuests.length"
+        class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
+      >
+        <span class="corner-cut-sm grid h-12 w-12 place-items-center bg-dl-violet-wash text-dl-violet" aria-hidden="true">◆</span>
+        <h2 class="m-0 font-dl-display text-dl-title font-semibold uppercase tracking-wide text-dl-ink">No quests yet</h2>
+        <p class="m-0 text-dl-body text-dl-ink-muted">Your log is empty. Add your first quest to start earning XP and ranking up.</p>
         <button
           type="button"
-          class="cursor-pointer border-0 bg-transparent p-0 text-[0.85rem] font-semibold text-accent-light font-[inherit] hover:underline"
+          class="dl-focus-inset mt-1 cursor-pointer bg-dl-violet px-4 py-2 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white transition-[filter] hover:brightness-110"
+          @click="openCreate"
+        >
+          Add first quest
+        </button>
+      </div>
+
+      <!-- Quests exist, but every one is filtered out — say so and offer the way out. -->
+      <div
+        v-else-if="!questGroups.length"
+        class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
+      >
+        <span class="corner-cut-sm grid h-12 w-12 place-items-center bg-dl-sunk text-dl-ink-faint" aria-hidden="true">+</span>
+        <h2 class="m-0 font-dl-display text-dl-title font-semibold uppercase tracking-wide text-dl-ink">No quests match</h2>
+        <p class="m-0 text-dl-body text-dl-ink-muted">Nothing in the current filters. Loosen a filter to see more.</p>
+        <button
+          type="button"
+          class="dl-focus-inset mt-1 cursor-pointer border border-dl-violet bg-dl-violet-wash px-4 py-2 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-dl-violet transition-colors hover:bg-dl-violet hover:text-white"
           @click="clearFilter"
         >
-          Clear
+          Clear filters
         </button>
-      </p>
+      </div>
     </div>
 
     <!-- New-quest form modal. -->
-    <HubPanel
+    <DlModal
       v-if="showCreate"
-      title="New Quest"
+      title="New quest"
       :origin="createOrigin"
       @close="closeCreate"
     >
       <QuestForm mode="create" @created="onCreated" />
-    </HubPanel>
+    </DlModal>
 
-    <!-- Single-quest detail — wide two-pane modal. -->
-    <HubPanel
+    <!-- Single-quest detail. -->
+    <DlModal
       v-if="selectedQuest"
       title="Quest"
       :origin="detailOrigin"
-      :max-width="980"
+      :max-width="720"
       @close="closeDetail"
     >
       <QuestDetail
@@ -265,12 +245,12 @@ const questGroups = computed<QuestGroup[]>(() => {
         @deleted="onDetailDeleted"
         @edit="openEditQuest"
       />
-    </HubPanel>
+    </DlModal>
 
     <!-- Edit-quest modal — stacks above the detail modal when it's open. -->
-    <HubPanel
+    <DlModal
       v-if="editingQuest"
-      title="Edit Quest"
+      title="Edit quest"
       :origin="editOrigin"
       @close="closeEdit"
     >
@@ -280,6 +260,6 @@ const questGroups = computed<QuestGroup[]>(() => {
         @updated="onQuestEdited"
         @cancel="closeEdit"
       />
-    </HubPanel>
+    </DlModal>
   </div>
 </template>

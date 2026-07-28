@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { storeToRefs } from 'pinia';
 import { client, type Quest, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
 import { localDateString } from '~/lib/date';
-import { XP_REWARDS, DIFFICULTY_ORDER, type Difficulty, type QuestPriority } from '@soloquest/shared';
-import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES } from '~/lib/priority';
+import { XP_REWARDS, type Difficulty, type QuestPriority } from '@soloquest/shared';
+import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES, PRIORITY_DL_CLASS } from '~/lib/priority';
 
 const props = withDefaults(
   defineProps<{ mode?: 'create' | 'edit'; initial?: Quest | null }>(),
@@ -19,33 +18,24 @@ const emit = defineEmits<{
 const title = ref('');
 const description = ref('');
 const difficulty = ref<Difficulty>('E');
-const priority = ref<QuestPriority>('normal'); // default on create
-const deadline = ref(''); // yyyy-mm-dd from <input type="date">
-const parentId = ref(''); // '' = None (sent as null)
-const selectedTags = ref<QuestTag[]>([]); // tag pins, sent as tagIds
+const priority = ref<QuestPriority>('normal');
+const deadline = ref('');
+const parentId = ref('');
+const selectedTags = ref<QuestTag[]>([]);
 const submitting = ref(false);
 const errorMsg = ref<string | null>(null);
-// Rank warnings from the last server response (non-blocking; shown under difficulty).
 const localWarnings = ref<string[]>([]);
 
-// Parent-quest options come from the shared store (single source of active quests);
-// the picker only needs id/title, which the store list carries.
 const { activeQuests } = storeToRefs(useQuestsStore());
-// In edit mode a quest can't be its own parent.
 const parentChoices = computed(() =>
   activeQuests.value.filter((q) => props.mode !== 'edit' || q.id !== props.initial?.id),
 );
-
-// XP reward for the selected rank — read from shared, never hardcoded.
 const xpForSelected = computed(() => XP_REWARDS[difficulty.value]);
 
-// Local calendar day (never toISOString — that shifts by the UTC offset and can land
-// the deadline on the wrong day).
 function toDateInput(iso: string) {
   return localDateString(new Date(iso));
 }
 
-// Prefill from `initial` (edit mode); re-syncs if the target quest changes.
 watch(
   () => props.initial,
   (q) => {
@@ -67,8 +57,6 @@ async function onCreate() {
       description: description.value,
       difficulty: difficulty.value,
       priority: priority.value,
-      // Date or null (empty = no deadline). hc serialises the Date to ISO; null stays
-      // null. Never send "" — z.coerce.date() would choke on it.
       deadline: deadline.value ? new Date(deadline.value) : null,
       parentId: parentId.value || null,
       tagIds: selectedTags.value.map((t) => t.id),
@@ -92,7 +80,6 @@ async function onCreate() {
 
 async function onEdit() {
   const initial = props.initial!;
-  // Send only changed fields. xpReward/status are never sent — the server owns them.
   const changes: {
     title?: string;
     description?: string;
@@ -107,26 +94,20 @@ async function onEdit() {
   if (difficulty.value !== initial.difficulty) changes.difficulty = difficulty.value;
   if (priority.value !== initial.priority) changes.priority = priority.value;
   const initialDeadline = initial.deadline ? toDateInput(initial.deadline) : '';
-  // Empty now → null (clear it); set/changed → Date; unchanged → omit.
   if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
   if (parentId.value !== (initial.parentId ?? '')) changes.parentId = parentId.value || null;
-  // Send tagIds only when the set actually changed (order-insensitive), so a no-op edit stays
-  // a no-op. A present array — even empty — means "replace with exactly this" server-side.
   const initialTagIds = new Set((initial.tags ?? []).map((t) => t.id));
   const currentTagIds = selectedTags.value.map((t) => t.id);
-  const tagsChanged =
-    initialTagIds.size !== currentTagIds.length || currentTagIds.some((id) => !initialTagIds.has(id));
+  const tagsChanged = initialTagIds.size !== currentTagIds.length || currentTagIds.some((id) => !initialTagIds.has(id));
   if (tagsChanged) changes.tagIds = currentTagIds;
 
   if (Object.keys(changes).length === 0) {
     emit('cancel');
     return;
   }
-
   const res = await client.api.quests[':id'].$patch({ param: { id: initial.id }, json: changes });
   if (!res.ok) {
-    errorMsg.value =
-      res.status === 409 ? 'This quest can no longer be edited.' : 'Could not save changes.';
+    errorMsg.value = res.status === 409 ? 'This quest can no longer be edited.' : 'Could not save changes.';
     return;
   }
   const result = await res.json();
@@ -147,72 +128,70 @@ async function onSubmit() {
 </script>
 
 <template>
-  <form class="flex flex-col gap-[0.7rem] rounded-none border border-line bg-[rgba(14,9,30,0.6)] p-4" @submit.prevent="onSubmit">
-    <p class="m-0 text-[0.7rem] tracking-[0.3em] text-accent">{{ mode === 'edit' ? '[ EDIT QUEST ]' : '[ NEW QUEST ]' }}</p>
+  <form class="flex flex-col gap-5" @submit.prevent="onSubmit">
+    <label class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Title</span>
+      <input
+        v-model="title"
+        type="text"
+        placeholder="Title"
+        required
+        maxlength="255"
+        class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
+      />
+    </label>
 
-    <input
-      v-model="title"
-      type="text"
-      placeholder="Title"
-      required
-      maxlength="255"
-      class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-    />
-    <textarea
-      v-model="description"
-      placeholder="Description"
-      required
-      rows="2"
-      class="resize-y rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-    />
+    <label class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Description</span>
+      <textarea
+        v-model="description"
+        placeholder="Description"
+        required
+        rows="2"
+        class="dl-focus-inset resize-y border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
+      />
+    </label>
 
-    <div class="flex gap-[0.7rem]">
-      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-        Rank — {{ xpForSelected }} XP
-        <select
-          v-model="difficulty"
-          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
-        >
-          <option v-for="d in DIFFICULTY_ORDER" :key="d" :value="d">{{ d }} — {{ XP_REWARDS[d] }} XP</option>
-        </select>
-      </label>
-      <label class="flex flex-1 flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-        Deadline
+    <div class="flex flex-wrap gap-5">
+      <div class="flex flex-col gap-1.5">
+        <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Rank · {{ xpForSelected }} XP</span>
+        <RankSelector :selected="[difficulty]" label="Rank" @toggle="difficulty = $event" />
+      </div>
+      <label class="flex flex-1 flex-col gap-1.5">
+        <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Deadline</span>
         <input
           v-model="deadline"
           type="date"
-          class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+          class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none"
         />
       </label>
     </div>
 
-    <p v-for="(w, i) in localWarnings" :key="i" class="m-0 text-[0.78rem] text-gold">⚠ {{ w }}</p>
+    <p v-for="(w, i) in localWarnings" :key="i" class="m-0 flex gap-2 border border-dl-gold bg-dl-gold/10 px-3 py-2 text-dl-meta text-dl-ink"><span aria-hidden="true" class="text-dl-gold">!</span>{{ w }}</p>
 
-    <!-- Priority: a segmented control (native buttons → keyboard-accessible), matching the
-         card marker's glyphs. Default 'normal' on create. One compact row, not a section. -->
-    <div class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-      <span>Priority</span>
-      <div role="group" aria-label="Priority" class="grid grid-cols-3 gap-[0.3rem]">
+    <div class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Priority</span>
+      <div role="group" aria-label="Priority" class="inline-flex overflow-hidden border border-dl-grid-line">
         <button
           v-for="p in PRIORITY_DISPLAY_ORDER"
           :key="p"
           type="button"
           :aria-pressed="priority === p"
-          class="flex items-center justify-center gap-[0.35rem] rounded-none border px-[0.5rem] py-[0.4rem] text-[0.8rem] font-semibold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
-          :class="priority === p ? 'border-accent bg-accent/15 text-ink' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
+          class="dl-focus-inset flex min-h-dl-touch flex-1 items-center justify-center gap-1.5 border-l border-dl-grid-line px-3 font-dl-mono text-dl-label uppercase tracking-wide transition-colors first:border-l-0 md:min-h-[38px]"
+          :class="priority === p ? 'bg-dl-violet text-white' : 'bg-dl-surface text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink'"
           @click="priority = p"
         >
-          <span :class="PRIORITY_STYLES[p].klass" aria-hidden="true">{{ PRIORITY_STYLES[p].glyph }}</span>
+          <span :class="priority === p ? 'text-white' : PRIORITY_DL_CLASS[p]" aria-hidden="true">{{ PRIORITY_STYLES[p].glyph }}</span>
           {{ PRIORITY_STYLES[p].short }}
         </button>
       </div>
     </div>
 
-    <label class="flex flex-col gap-[0.3rem] text-[0.75rem] text-ink-muted">
-      Parent quest
+    <label class="flex flex-col gap-1.5">
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Parent quest</span>
       <select
         v-model="parentId"
-        class="rounded-none border border-line bg-panel px-[0.7rem] py-[0.55rem] text-[0.9rem] text-ink-soft outline-none font-[inherit] focus:border-accent focus:shadow-[0_0_0_2px_rgba(124,92,232,0.3)]"
+        class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none"
       >
         <option value="">None</option>
         <option v-for="q in parentChoices" :key="q.id" :value="q.id">{{ q.title }}</option>
@@ -221,25 +200,21 @@ async function onSubmit() {
 
     <QuestTagPicker v-model="selectedTags" />
 
-    <p v-if="errorMsg" class="m-0 text-[0.78rem] text-danger-bright">{{ errorMsg }}</p>
+    <p v-if="errorMsg" class="m-0 text-dl-meta text-dl-magenta">{{ errorMsg }}</p>
 
-    <div class="flex gap-[0.6rem]">
-      <button
-        type="submit"
-        :disabled="submitting"
-        class="flex-1 cursor-pointer rounded-none border-0 bg-gradient-to-b from-accent-deep to-accent-dark p-[0.6rem] font-semibold text-white shadow-[0_0_14px_rgba(124,92,232,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {{ submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Issue quest' }}
-      </button>
+    <div class="sticky bottom-0 -mx-5 -mb-5 mt-1 flex items-center justify-end gap-3 border-t border-dl-band-line bg-dl-surface px-5 py-3">
       <button
         v-if="mode === 'edit'"
         type="button"
         :disabled="submitting"
-        class="flex-none cursor-pointer rounded-none border border-line bg-transparent p-[0.6rem] font-semibold text-ink shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+        class="dl-focus-inset cursor-pointer border border-dl-grid-line bg-dl-surface px-4 py-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink disabled:opacity-60"
         @click="emit('cancel')"
-      >
-        Cancel
-      </button>
+      >Cancel</button>
+      <button
+        type="submit"
+        :disabled="submitting"
+        class="dl-focus-inset cursor-pointer bg-dl-violet px-5 py-2 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white transition-[filter] hover:brightness-110 disabled:opacity-60"
+      >{{ submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create quest' }}</button>
     </div>
   </form>
 </template>

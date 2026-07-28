@@ -116,12 +116,7 @@ const signals = [
         <div class="flex flex-col gap-2">
           <h3 class="m-0 text-dl-meta text-dl-ink-muted">ranks (S is inverted)</h3>
           <div class="flex flex-wrap gap-3">
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-e font-dl-display text-dl-body font-semibold text-dl-ink">E</span>
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-d font-dl-display text-dl-body font-semibold text-dl-ink">D</span>
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-c font-dl-display text-dl-body font-semibold text-dl-rank-s-ink">C</span>
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-b font-dl-display text-dl-body font-semibold text-dl-ink">B</span>
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-a font-dl-display text-dl-body font-semibold text-dl-ink">A</span>
-            <span class="corner-cut-sm inline-flex h-9 w-9 items-center justify-center bg-dl-rank-s font-dl-display text-dl-body font-semibold text-dl-rank-s-ink">S</span>
+            <RankBadge v-for="r in ['E', 'D', 'C', 'B', 'A', 'S']" :key="r" :rank="r" />
           </div>
         </div>
       </section>
