@@ -1,122 +1,283 @@
 <script setup lang="ts">
-import { DIFFICULTY_ORDER, type Difficulty } from '@soloquest/shared';
+import { storeToRefs } from 'pinia';
+import { PRIORITY_STYLES, PRIORITY_DL_CLASS } from '~/lib/priority';
+import { tagSwatchStyle } from '~/lib/tag-colors';
 import { useQuestFilters } from '~/composables/useQuestFilters';
-import { rankColor } from '~/lib/ranks';
-import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES } from '~/lib/priority';
+import { useTagsStore } from '~/stores/tags';
+import type { QuestPriority } from '@soloquest/shared';
 
-// The rank chips, the tag filter (a searchable popover — see QuestTagFilter), and the
-// "Showing X of Y · Clear" readout for the quest list.
-//
-// The filter state lives in the URL (useRankFilter), so this reads it straight from there
-// instead of taking it as props: passing it down would only make a second copy of
-// something the address already owns. The two counts are the exception — only the page
-// can count its own list — so they come in as props.
-const props = defineProps<{
-  shown: number;
-  total: number;
-}>();
+// The quest-list filter bar (Daylight). Desktop lays every dimension inline; mobile keeps the
+// rank selector visible and folds the rest (tags · priority · hide sub-tasks) behind a
+// counted "Filters" button that opens a bottom sheet. All state still lives in the URL via
+// useQuestFilters — this only renders it. The two counts come in as props (only the page can
+// count its own list).
+const props = defineProps<{ shown: number; total: number }>();
 
 const {
-  isRankSelected,
+  selectedRanks,
+  toggleRank,
+  selectedPriorities,
   isPrioritySelected,
   togglePriority,
+  selectedTagIds,
+  isTagSelected,
+  toggleTag,
   isCountFiltered,
   isFiltered,
   hideSubTasks,
-  toggleRank,
   toggleSubTasks,
   clearFilter,
 } = useQuestFilters();
 
-// A lit chip *is* the rank badge from QuestCard (rank colour + glow); an unlit one keeps
-// the shape and the letter but falls back to a muted outline via classes, so "off" reads
-// at a glance without the colour having to carry the state on its own.
-function chipStyle(rank: Difficulty) {
-  if (!isRankSelected(rank)) return undefined;
-  const color = rankColor(rank);
-  return { color, borderColor: color };
-}
+// The filter offers the two SIGNALLED priorities only (high/low) — the same pair the row marks;
+// "normal" is the unmarked default and isn't a chip (the URL still accepts it).
+const FILTER_PRIORITIES: QuestPriority[] = ['high', 'low'];
 
-// One clause per filter the player actually turned on, so "Clear" never sits next to a
-// blank reason.
-//
-// The count is deliberately rank-only. `shown`/`total` both count top-level quests, and
-// hiding sub-tasks removes none of them — so with the toggle as the only filter the count
-// would read "Showing 5 of 5": true, but it reads like a filter that failed. Rather than
-// bend the numbers to look busy (counting sub-tasks into `total` would be inventing a
-// denominator the list never had), the toggle states itself in words and leaves the count
-// alone.
 const summaryParts = computed(() => {
   const parts: string[] = [];
   if (isCountFiltered.value) parts.push(`Showing ${props.shown} of ${props.total}`);
+  else parts.push(`${props.total} ${props.total === 1 ? 'quest' : 'quests'}`);
   if (hideSubTasks.value) parts.push('Sub-tasks hidden');
   return parts;
+});
+
+// ── Mobile bottom sheet ─────────────────────────────────────────────────────────────────────
+const sheetOpen = ref(false);
+// Everything folded into the sheet (rank stays outside), so the button can show a count.
+const sheetCount = computed(
+  () => selectedPriorities.value.length + selectedTagIds.value.length + (hideSubTasks.value ? 1 : 0),
+);
+
+const tagsStore = useTagsStore();
+const { sortedTags } = storeToRefs(tagsStore);
+onMounted(() => { tagsStore.load(); });
+
+const tagQuery = ref('');
+const filteredTags = computed(() => {
+  const q = tagQuery.value.trim().toLowerCase();
+  return q ? sortedTags.value.filter((t) => t.normalizedName.includes(q)) : sortedTags.value;
+});
+
+function openSheet() {
+  sheetOpen.value = true;
+}
+function closeSheet() {
+  sheetOpen.value = false;
+}
+function onSheetKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeSheet();
+}
+watch(sheetOpen, (isOpen) => {
+  if (!import.meta.client) return;
+  if (isOpen) document.addEventListener('keydown', onSheetKeydown);
+  else document.removeEventListener('keydown', onSheetKeydown);
+});
+onBeforeUnmount(() => {
+  if (import.meta.client) document.removeEventListener('keydown', onSheetKeydown);
 });
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-    <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by rank">
+  <div class="flex flex-col gap-2">
+    <!-- ── Desktop bar ──────────────────────────────────────────────────────────────────── -->
+    <div class="hidden flex-wrap items-center gap-x-4 gap-y-2 md:flex">
+      <div class="flex items-center gap-2">
+        <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Rank</span>
+        <RankSelector :selected="selectedRanks" label="Filter by rank" @toggle="toggleRank" />
+      </div>
+
+      <QuestTagFilter />
+
+      <div class="flex items-center gap-2">
+        <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Priority</span>
+        <div class="flex gap-1" role="group" aria-label="Filter by priority">
+          <button
+            v-for="p in FILTER_PRIORITIES"
+            :key="p"
+            type="button"
+            :aria-pressed="isPrioritySelected(p)"
+            :aria-label="PRIORITY_STYLES[p].label"
+            class="dl-focus-inset grid h-8 w-8 cursor-pointer place-items-center border text-dl-meta leading-none transition-colors"
+            :class="
+              isPrioritySelected(p)
+                ? 'border-dl-violet bg-dl-violet text-white'
+                : 'border-dl-grid-line bg-dl-surface hover:bg-dl-sunk'
+            "
+            @click="togglePriority(p)"
+          >
+            <span :class="isPrioritySelected(p) ? 'text-white' : PRIORITY_DL_CLASS[p]" aria-hidden="true">{{ PRIORITY_STYLES[p].glyph }}</span>
+          </button>
+        </div>
+      </div>
+
       <button
-        v-for="rank in DIFFICULTY_ORDER"
-        :key="rank"
         type="button"
-        :aria-pressed="isRankSelected(rank)"
-        class="grid h-7 w-7 cursor-pointer place-items-center rounded-none border bg-panel text-[0.9rem] font-extrabold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
-        :class="isRankSelected(rank) ? '[text-shadow:0_0_8px_currentColor]' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
-        :style="chipStyle(rank)"
-        @click="toggleRank(rank)"
+        :aria-pressed="hideSubTasks"
+        class="dl-focus-inset min-h-[2rem] cursor-pointer border px-3 py-1 font-dl-mono text-dl-label uppercase tracking-wide transition-colors"
+        :class="
+          hideSubTasks
+            ? 'border-dl-violet bg-dl-violet-wash text-dl-violet'
+            : 'border-dl-grid-line bg-dl-surface text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink'
+        "
+        @click="toggleSubTasks"
       >
-        {{ rank }}
+        Hide sub-tasks
       </button>
+
+      <p class="m-0 ml-auto flex items-center gap-2 font-dl-mono text-dl-label text-dl-ink-muted">
+        <span>{{ summaryParts.join(' · ') }}</span>
+        <template v-if="isFiltered">
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            class="cursor-pointer border-0 bg-transparent p-0 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-dl-violet hover:underline"
+            @click="clearFilter"
+          >
+            Clear
+          </button>
+        </template>
+      </p>
     </div>
 
-    <!-- Priority: glyph chips (▲ ─ ▼), same additive OR semantics as the ranks. Glyphs
-         rather than words so three more chips don't turn the bar into a wall of text. The
-         divider is glued to the chips (one flex unit) so that when the bar wraps on a narrow
-         screen it travels with them instead of stranding a floating rule at a line edge. -->
-    <div class="flex items-center gap-2">
-      <span class="h-6 w-px flex-none bg-line" aria-hidden="true" />
-      <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by priority">
+    <!-- ── Mobile bar ───────────────────────────────────────────────────────────────────── -->
+    <div class="flex flex-col gap-2 md:hidden">
+      <div class="flex items-center gap-2">
+        <RankSelector :selected="selectedRanks" label="Filter by rank" @toggle="toggleRank" />
         <button
-          v-for="p in PRIORITY_DISPLAY_ORDER"
-          :key="p"
           type="button"
-          :aria-pressed="isPrioritySelected(p)"
-          :aria-label="PRIORITY_STYLES[p].label"
-          class="grid h-7 w-7 cursor-pointer place-items-center rounded-none border bg-panel text-[0.9rem] font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
-          :class="isPrioritySelected(p) ? [PRIORITY_STYLES[p].klass, 'border-current [text-shadow:0_0_6px_currentColor]'] : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
-          @click="togglePriority(p)"
+          class="dl-focus-inset ml-auto flex min-h-dl-touch items-center gap-1.5 border border-dl-grid-line bg-dl-surface px-3 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted"
+          @click="openSheet"
         >
-          {{ PRIORITY_STYLES[p].glyph }}
+          Filters
+          <span
+            v-if="sheetCount"
+            class="grid h-4 min-w-4 place-items-center bg-dl-violet px-1 text-[0.6rem] font-semibold text-white"
+          >{{ sheetCount }}</span>
         </button>
       </div>
+      <p class="m-0 flex items-center gap-2 font-dl-mono text-dl-label text-dl-ink-muted">
+        <span>{{ summaryParts.join(' · ') }}</span>
+        <template v-if="isFiltered">
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            class="cursor-pointer border-0 bg-transparent p-0 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-dl-violet hover:underline"
+            @click="clearFilter"
+          >
+            Clear
+          </button>
+        </template>
+      </p>
     </div>
 
-    <!-- Tags: OR filter over the quest's pinned tags, in a searchable popover so the bar
-         scales past a handful of tags. Selected tags surface as chips beside its button. -->
-    <QuestTagFilter />
+    <!-- ── Bottom sheet (mobile) ────────────────────────────────────────────────────────── -->
+    <Teleport to="body">
+      <div v-if="sheetOpen" class="fixed inset-0 z-[70] md:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+        <div class="absolute inset-0 bg-dl-ink/40" @click="closeSheet" />
+        <div
+          class="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col gap-4 border-t border-dl-band-line bg-dl-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        >
+          <div class="flex items-center justify-between">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Filters</span>
+            <button
+              type="button"
+              class="dl-focus-inset cursor-pointer border-0 bg-transparent p-1 text-dl-ink-muted hover:text-dl-ink"
+              aria-label="Close filters"
+              @click="closeSheet"
+            >
+              ✕
+            </button>
+          </div>
 
-    <button
-      type="button"
-      :aria-pressed="hideSubTasks"
-      class="cursor-pointer rounded-none border px-[0.6rem] py-[0.3rem] text-[0.75rem] font-semibold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
-      :class="hideSubTasks ? 'border-accent bg-accent/15 text-ink' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
-      @click="toggleSubTasks"
-    >
-      Hide sub-tasks
-    </button>
+          <!-- Priority -->
+          <div class="flex flex-col gap-2">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Priority</span>
+            <div class="flex gap-2" role="group" aria-label="Filter by priority">
+              <button
+                v-for="p in FILTER_PRIORITIES"
+                :key="p"
+                type="button"
+                :aria-pressed="isPrioritySelected(p)"
+                class="dl-focus-inset flex min-h-dl-touch flex-1 items-center justify-center gap-2 border font-dl-mono text-dl-label uppercase tracking-wide transition-colors"
+                :class="
+                  isPrioritySelected(p)
+                    ? 'border-dl-violet bg-dl-violet text-white'
+                    : 'border-dl-grid-line bg-dl-surface text-dl-ink-muted'
+                "
+                @click="togglePriority(p)"
+              >
+                <span :class="isPrioritySelected(p) ? 'text-white' : PRIORITY_DL_CLASS[p]" aria-hidden="true">{{ PRIORITY_STYLES[p].glyph }}</span>
+                {{ PRIORITY_STYLES[p].short }}
+              </button>
+            </div>
+          </div>
 
-    <p v-if="isFiltered" class="m-0 flex items-center gap-2 text-[0.75rem] text-ink-muted">
-      {{ summaryParts.join(' · ') }}
-      <span aria-hidden="true">·</span>
-      <button
-        type="button"
-        class="cursor-pointer border-0 bg-transparent p-0 text-[0.75rem] font-semibold text-accent-light font-[inherit] hover:underline"
-        @click="clearFilter"
-      >
-        Clear
-      </button>
-    </p>
+          <!-- Hide sub-tasks -->
+          <button
+            type="button"
+            :aria-pressed="hideSubTasks"
+            class="dl-focus-inset flex min-h-dl-touch items-center justify-between border px-3 font-dl-mono text-dl-label uppercase tracking-wide transition-colors"
+            :class="
+              hideSubTasks
+                ? 'border-dl-violet bg-dl-violet-wash text-dl-violet'
+                : 'border-dl-grid-line bg-dl-surface text-dl-ink-muted'
+            "
+            @click="toggleSubTasks"
+          >
+            Hide sub-tasks
+            <span aria-hidden="true">{{ hideSubTasks ? '✓' : '' }}</span>
+          </button>
+
+          <!-- Tags -->
+          <div class="flex min-h-0 flex-col gap-2">
+            <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Tags</span>
+            <input
+              v-model="tagQuery"
+              type="text"
+              placeholder="Search tags…"
+              class="dl-focus-inset min-h-dl-touch border border-dl-grid-line bg-dl-surface px-3 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
+            />
+            <ul class="m-0 flex max-h-[30dvh] list-none flex-col gap-1 overflow-y-auto p-0">
+              <li v-for="tag in filteredTags" :key="tag.id">
+                <button
+                  type="button"
+                  :aria-pressed="isTagSelected(tag.id)"
+                  class="dl-focus-inset flex min-h-dl-touch w-full items-center gap-2 border px-3 text-left text-dl-body transition-colors"
+                  :class="
+                    isTagSelected(tag.id)
+                      ? 'border-dl-violet bg-dl-violet-wash text-dl-ink'
+                      : 'border-dl-hairline bg-dl-surface text-dl-ink-muted'
+                  "
+                  @click="toggleTag(tag.id)"
+                >
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="tagSwatchStyle(tag.color)" />
+                  <span class="min-w-0 flex-1 truncate">{{ tag.name }}</span>
+                  <span v-if="isTagSelected(tag.id)" aria-hidden="true" class="shrink-0 text-dl-violet">✓</span>
+                </button>
+              </li>
+              <li v-if="!filteredTags.length" class="px-3 py-2 text-dl-meta text-dl-ink-faint">No tags match.</li>
+            </ul>
+          </div>
+
+          <div class="flex gap-2">
+            <button
+              v-if="isFiltered"
+              type="button"
+              class="dl-focus-inset min-h-dl-touch flex-1 border border-dl-grid-line bg-dl-surface font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted"
+              @click="clearFilter"
+            >
+              Clear all
+            </button>
+            <button
+              type="button"
+              class="dl-focus-inset min-h-dl-touch flex-1 bg-dl-violet font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white"
+              @click="closeSheet"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

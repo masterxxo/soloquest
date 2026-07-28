@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useTagsStore } from '~/stores/tags';
 import { useQuestFilters } from '~/composables/useQuestFilters';
 import { useTagCombobox } from '~/composables/useTagCombobox';
-import { tagChipStyle, tagSwatchStyle } from '~/lib/tag-colors';
+import { tagSwatchStyle } from '~/lib/tag-colors';
 import type { TagWithUsage } from '~/lib/api-client';
 
 // Scalable tag filter: a button opening a searchable popover instead of a chip per tag inline
@@ -84,39 +84,31 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
     <!-- Trigger: shows the selected count so the filter reads even with the popover closed. -->
     <button
       type="button"
-      class="flex cursor-pointer items-center gap-1 rounded-none border px-[0.6rem] py-[0.3rem] text-[0.75rem] font-semibold font-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-soft"
-      :class="selectedTags.length ? 'border-accent bg-accent/15 text-ink' : 'border-line text-ink-dim hover:border-line-soft hover:text-ink'"
+      class="dl-focus-inset flex min-h-[2rem] cursor-pointer items-center gap-1.5 border px-3 font-dl-mono text-dl-label uppercase tracking-wide transition-colors"
+      :class="selectedTags.length ? 'border-dl-violet bg-dl-violet-wash text-dl-violet' : 'border-dl-grid-line bg-dl-surface text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink'"
       :aria-expanded="open"
       aria-haspopup="listbox"
       @click="toggleOpen"
     >
-      Tags<span v-if="selectedTags.length"> · {{ selectedTags.length }}</span>
-      <span aria-hidden="true" class="text-[0.6rem]">▾</span>
+      Tags<span v-if="selectedTags.length" class="normal-case"> · {{ selectedTags.length }}</span>
+      <span aria-hidden="true">▾</span>
     </button>
 
     <!-- Active selection, visible outside the popover; capped so the bar can't swell. -->
-    <span
+    <TagChip
       v-for="tag in visibleChips"
       :key="tag.id"
-      class="inline-flex items-center gap-[0.3rem] rounded-[3px] border px-[0.4rem] py-[0.15rem] text-[0.72rem]"
-      :style="tagChipStyle(tag.color)"
-    >
-      {{ tag.name }}
-      <button
-        type="button"
-        class="cursor-pointer border-0 bg-transparent p-0 text-[0.8rem] leading-none text-current opacity-70 font-[inherit] hover:opacity-100"
-        :aria-label="`Remove tag filter ${tag.name}`"
-        @click="toggleTag(tag.id)"
-      >
-        ✕
-      </button>
-    </span>
-    <span v-if="overflowCount" class="text-[0.72rem] text-ink-muted">+{{ overflowCount }} more</span>
+      :name="tag.name"
+      :color="tag.color"
+      removable
+      @remove="toggleTag(tag.id)"
+    />
+    <span v-if="overflowCount" class="font-dl-mono text-dl-label text-dl-ink-faint">+{{ overflowCount }} more</span>
 
     <!-- Popover -->
     <div
       v-if="open"
-      class="absolute left-0 top-[calc(100%+0.35rem)] z-20 flex w-[15rem] flex-col gap-[0.4rem] border border-line bg-[rgba(8,5,20,0.98)] p-[0.5rem] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+      class="absolute left-0 top-[calc(100%+0.35rem)] z-20 flex w-[15rem] flex-col gap-2 border border-dl-grid-line bg-dl-surface p-2 shadow-[0_8px_24px_rgba(20,17,31,0.15)]"
     >
       <input
         ref="inputEl"
@@ -128,7 +120,7 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
         :aria-controls="listboxId"
         :aria-activedescendant="filtered.length ? optionId(activeIndex) : undefined"
         placeholder="Search tags…"
-        class="w-full rounded-none border border-line bg-panel px-[0.5rem] py-[0.35rem] text-[0.82rem] text-ink-soft outline-none font-[inherit] focus:border-accent"
+        class="dl-focus-inset w-full border border-dl-grid-line bg-dl-surface px-2 py-1.5 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
         @keydown="onKeydown"
       />
 
@@ -137,7 +129,7 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
         :id="listboxId"
         role="listbox"
         aria-multiselectable="true"
-        class="m-0 flex max-h-[13rem] list-none flex-col gap-[1px] overflow-y-auto p-0"
+        class="m-0 flex max-h-[13rem] list-none flex-col overflow-y-auto p-0"
       >
         <li
           v-for="(tag, i) in filtered"
@@ -145,17 +137,17 @@ const optionId = (i: number) => `${listboxId}-opt-${i}`;
           :key="tag.id"
           role="option"
           :aria-selected="isTagSelected(tag.id)"
-          class="flex cursor-pointer items-center gap-[0.45rem] rounded-[2px] px-[0.45rem] py-[0.3rem] text-[0.82rem]"
-          :class="i === activeIndex ? 'bg-accent/20 text-ink' : 'text-ink-muted hover:bg-accent/10'"
+          class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-dl-body"
+          :class="i === activeIndex ? 'bg-dl-violet-wash text-dl-ink' : 'text-dl-ink-muted hover:bg-dl-sunk'"
           @mousedown.prevent="toggleTag(tag.id)"
           @mouseenter="activeIndex = i"
         >
-          <span class="h-[0.6rem] w-[0.6rem] flex-none rounded-full" :style="tagSwatchStyle(tag.color)" />
+          <span class="h-2.5 w-2.5 flex-none rounded-full" :style="tagSwatchStyle(tag.color)" />
           <span class="min-w-0 flex-1 truncate">{{ tag.name }}</span>
-          <span v-if="isTagSelected(tag.id)" aria-hidden="true" class="flex-none text-accent-light">✓</span>
+          <span v-if="isTagSelected(tag.id)" aria-hidden="true" class="flex-none text-dl-violet">✓</span>
         </li>
       </ul>
-      <p v-else class="m-0 px-[0.45rem] py-[0.3rem] text-[0.78rem] text-ink-muted">No tags match.</p>
+      <p v-else class="m-0 px-2 py-1.5 text-dl-meta text-dl-ink-faint">No tags match.</p>
     </div>
   </div>
 </template>

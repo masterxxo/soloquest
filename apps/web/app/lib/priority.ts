@@ -29,6 +29,16 @@ export function priorityMarker(priority: QuestPriority): PriorityStyle | null {
   return priority === 'normal' ? null : PRIORITY_STYLES[priority];
 }
 
+// Daylight colour tokens for the priority glyph — kept SEPARATE from `klass` above, which
+// still points at the grimoire tokens the not-yet-migrated QuestCard/QuestForm use. The
+// migrated (Daylight) surfaces read this instead so the glyph lands on the light palette.
+// `high` keeps the warm gold warning accent; `low`/`normal` recede to a faint ink.
+export const PRIORITY_DL_CLASS: Record<QuestPriority, string> = {
+  high: 'text-dl-gold',
+  normal: 'text-dl-ink-faint',
+  low: 'text-dl-ink-faint',
+};
+
 // Display order for the form control and the filter chips: high → normal → low (most
 // prominent first). The canonical enum order in `@soloquest/shared` stays ascending
 // (low, normal, high) for a possible future sort; this is presentation only.

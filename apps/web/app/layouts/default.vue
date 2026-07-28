@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
-import { useFeedbackStore } from '~/stores/feedback';
 import { useSignOut } from '~/composables/useSignOut';
 import { useModalStackStore } from '~/stores/modalStack';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
@@ -10,7 +8,6 @@ import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 const route = useRoute();
 const player = usePlayerStore();
 const quests = useQuestsStore();
-const feedback = useFeedbackStore();
 
 // Session stays the source of truth; the player store is a projection of session.user.
 // Hydration lives in the persistent layout so it survives page navigation.
@@ -34,7 +31,7 @@ const mobileTabs = tabs.filter((t) => !t.soon);
 const isActive = (to: string) =>
   to === '/' ? route.path === '/' : route.path.startsWith(to);
 
-// Sign out lives in the desktop rail; on mobile (rail hidden) it moves to the Status page.
+// Sign out lives in the desktop gutter; on mobile (gutter hidden) it moves to the Status page.
 const { loggingOut, onSignOut } = useSignOut();
 
 // Global Escape → close the top-most modal. Registered in the persistent layout so it works
@@ -52,186 +49,135 @@ useKeyboardShortcuts([
     },
   },
 ]);
-
-// ── Pulsing edge of light around the book frame ────────────────────────────────
-// Two light sources travel the perimeter at different speeds, in opposite directions,
-// with an irregular brightness pulse. Values picked in the tuner — keep them.
-const frame = ref<SVGSVGElement | null>(null);
-const params = { intensity: 0.5, speed: 0.3, pulse: 0.45 };
-let raf = 0;
-let ro: ResizeObserver | null = null;
-
-onMounted(() => {
-  const svg = frame.value!;
-  const box = svg.parentElement as HTMLElement;
-  const rects = Array.from(svg.querySelectorAll('rect')) as SVGRectElement[];
-
-  const size = () => {
-    const w = box.clientWidth, h = box.clientHeight;
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    rects.forEach(r => {
-      r.setAttribute('x', '1'); r.setAttribute('y', '1');
-      r.setAttribute('width', String(w - 2)); r.setAttribute('height', String(h - 2));
-      r.setAttribute('rx', '10');
-    });
-  };
-  size();
-  ro = new ResizeObserver(size); ro.observe(box);
-
-  const c1 = rects.filter(r => r.classList.contains('c1'));
-  const c2 = rects.filter(r => r.classList.contains('c2'));
-  let off1 = 0, off2 = 500, last = performance.now();
-
-  const loop = (now: number) => {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    const rate = (0.015 + params.speed * 0.10) * 1000;
-    off1 = (off1 + rate * dt) % 1000;
-    off2 = (off2 - rate * 0.73 * dt + 1000) % 1000;
-    const t = now / 1000;
-    const n = (Math.sin(t*0.9) + Math.sin(t*1.7+1) + Math.sin(t*2.3+2)) / 3;
-    const mul = Math.max(0, 1 + params.pulse * 0.6 * n);
-    c1.forEach(r => { r.setAttribute('stroke-dashoffset', String(-off1)); r.style.opacity = String(Math.min(1, +r.dataset.base! * params.intensity * mul)); });
-    c2.forEach(r => { r.setAttribute('stroke-dashoffset', String(off2));  r.style.opacity = String(Math.min(1, +r.dataset.base! * params.intensity * mul * 0.85)); });
-    raf = requestAnimationFrame(loop);
-  };
-  raf = requestAnimationFrame(loop);
-});
-
-onBeforeUnmount(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
 </script>
 
 <template>
-  <!-- Fixed height + overflow-hidden: the book doesn't grow with content — scrolling
-       happens inside the content section. On mobile pb-[76px] leaves room above the
-       bottom nav bar; md:p-8 clears that reserve on desktop. -->
-  <div class="flex h-[100dvh] w-full justify-center overflow-hidden p-3 pb-[76px] text-ink md:p-8">
-    <div class="flex h-full w-full max-w-6xl items-stretch">
+  <!-- Daylight shell — a 1px `dl-grid-line` frame to the edges with cut corners. Two layers:
+       the outer holds the frame line (a grid-line fill + 1px padding), the inner is the app
+       surface, both clipped by `corner-cut` so the bevel is drawn cleanly. Scroll pattern
+       (unchanged from the grimoire shell): the frame is h-[100dvh] + overflow-hidden, the
+       min-h-0 chain runs down to a SINGLE overflow-y-auto in the content region, so the shell
+       never grows with content — the gutter, telemetry bar and mobile nav stay pinned. -->
+  <div class="corner-cut flex h-[100dvh] w-full overflow-hidden bg-dl-grid-line p-px text-dl-ink">
+    <div class="corner-cut flex min-h-0 w-full flex-1 bg-dl-bg">
 
-      <!-- Navigation: vertical rail (desktop only). -->
-      <nav class="z-10 hidden flex-col gap-1.5 pt-8 md:flex">
-        <NuxtLink
-          v-for="t in tabs" :key="t.label"
-          :to="t.soon ? '' : t.to"
-          class="grimoire-tab flex items-center gap-2 rounded-l-lg border border-r-0 py-[9px] pl-[14px] pr-3 text-xs transition-[color,background] duration-200"
-          :class="
-            t.soon
-              ? '-mr-px border-[#211a40] bg-[#100b22] pointer-events-none text-[#5a5080]'
-              : isActive(t.to)
-                ? '-mr-0.5 border-accent bg-accent text-white shadow-[-1px_0_0_#7c5ce8]'
-                : '-mr-px border-line bg-[#181030] text-[#9d93c9] hover:bg-[#1e1540] hover:text-[#c9bdf0]'
-          "
-        >
-          <GrimoireIcon :name="t.icon" />
-          <span>{{ t.label }}</span>
-        </NuxtLink>
+      <!-- Navigation: vertical gutter (desktop only), 88px. Brand marker on top, then six
+           tabs (Glossary/Items are disabled stubs), then Sign out at the bottom. Active tab:
+           violet-wash fill + a violet bar on the leading edge. The gutter shares the frame's
+           `dl-bg` fill (a `dl-band-line` divider separates it) so the frame's cut corners never
+           clip a lighter surface into a stray triangle — only the 1px bevel line remains. -->
+      <aside class="hidden w-dl-gutter shrink-0 flex-col border-r border-dl-band-line bg-dl-bg md:flex">
+        <!-- Brand marker — anchors the top of the rail. White "S" on violet is 7.2:1 (AA). -->
+        <div class="flex justify-center py-4">
+          <span class="corner-cut-sm flex h-10 w-10 items-center justify-center bg-dl-violet font-dl-display text-dl-title font-bold text-white">S</span>
+        </div>
+
+        <nav class="flex flex-col">
+          <NuxtLink
+            v-for="t in tabs" :key="t.label"
+            :to="t.soon ? '' : t.to"
+            class="relative flex flex-col items-center gap-1.5 py-3.5 font-dl-mono text-dl-label uppercase tracking-wide transition-colors duration-dl-standard ease-dl"
+            :class="
+              t.soon
+                ? 'pointer-events-none text-dl-ink-faint'
+                : isActive(t.to)
+                  ? 'bg-dl-violet-wash text-dl-violet'
+                  : 'text-dl-ink-muted hover:bg-dl-sunk hover:text-dl-ink'
+            "
+          >
+            <span v-if="!t.soon && isActive(t.to)" class="absolute inset-y-0 left-0 w-0.5 bg-dl-violet" />
+            <NavIcon :name="t.icon" class="h-5 w-5" />
+            <span>{{ t.label }}</span>
+          </NuxtLink>
+        </nav>
 
         <button
           type="button"
-          class="grimoire-tab -mr-px mt-[14px] flex cursor-pointer items-center gap-2 rounded-l-lg border border-r-0 border-line bg-[#120c26] py-[9px] pl-[14px] pr-3 text-left font-[inherit] text-xs text-[#7c6fa8] transition-[color,background] duration-200 enabled:hover:bg-[#1e1230] enabled:hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          class="mt-auto flex flex-col items-center gap-1.5 py-3.5 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted transition-colors duration-dl-standard ease-dl enabled:hover:bg-dl-sunk enabled:hover:text-dl-magenta disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="loggingOut"
           @click="onSignOut"
         >
-          <GrimoireIcon name="items" class="invisible" />
+          <NavIcon name="signout" class="h-5 w-5" />
           <span>{{ loggingOut ? 'Signing out…' : 'Sign out' }}</span>
         </button>
-      </nav>
+      </aside>
 
-      <div class="relative flex h-full min-h-0 flex-1 flex-col gap-2 rounded-[12px] border-2 border-line-strong bg-panel p-2 md:gap-3 md:p-3">
-        <!-- Drifting fog behind both sections (like the modals); a decorative background
-             layer under the pulsing edge, with content above it via `relative`. -->
-        <SmokeCanvas :density="1.5" :speed="0.6" />
-        <svg ref="frame" class="pointer-events-none absolute inset-0 z-[2] h-full w-full overflow-visible">
-          <defs>
-            <filter id="grimoire-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4.5" />
-            </filter>
-          </defs>
-          <rect class="c1" data-base="0.42" pathLength="1000" fill="none" stroke="#b9a6ff" stroke-width="6.5" stroke-linecap="round" stroke-dasharray="95 905" filter="url(#grimoire-glow)" />
-          <rect class="c1" data-base="0.9"  pathLength="1000" fill="none" stroke="#e2d8ff" stroke-width="2"   stroke-linecap="round" stroke-dasharray="95 905" />
-          <rect class="c2" data-base="0.36" pathLength="1000" fill="none" stroke="#8d6bff" stroke-width="6"   stroke-linecap="round" stroke-dasharray="65 935" filter="url(#grimoire-glow)" />
-          <rect class="c2" data-base="0.8"  pathLength="1000" fill="none" stroke="#cdbcff" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="65 935" />
-        </svg>
+      <!-- Main column: telemetry bar (fixed) + scrolling content + mobile nav (fixed). -->
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
 
-        <!-- Section 1: header (cartouche) — fixed height, doesn't scroll. -->
-        <section class="relative z-[1] shrink-0 rounded-[6px] border border-line p-3 md:p-5">
-          <FrameCorners />
-          <div class="flex items-center gap-3 md:gap-3.5">
-            <div class="relative shrink-0">
-              <div class="flex h-10 w-10 items-end justify-center overflow-hidden rounded-lg border border-accent bg-[#1a1140] md:h-11 md:w-11">
-                <img src="/images/character.png" alt="" class="h-full w-full object-cover object-top" />
-              </div>
-              <span class="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-md border-2 border-app bg-accent text-[11px] font-medium text-white">
-                {{ player.rank }}
-              </span>
+        <!-- Telemetry bar — reads the player store (the old cartouche). It never scrolls.
+             Two groups pushed to opposite edges (justify-between): the LEFT group is a compact
+             run of portrait · LV · XP · RANK; the RIGHT group hugs TODAY · OVERDUE to the far
+             edge. The elastic gap sits between them, so the XP bar keeps a fixed width instead
+             of stretching the whole bar. -->
+        <header class="flex shrink-0 items-center justify-between gap-4 border-b border-dl-band-line bg-dl-surface px-3 py-2.5 md:px-6 md:py-3">
+
+          <!-- LEFT group: portrait · LV · XP · RANK. -->
+          <div class="flex min-w-0 items-center gap-3 md:gap-4">
+            <!-- Portrait thumbnail — secondary, max 56px, in a cut frame. -->
+            <div class="corner-cut-sm hidden h-11 w-11 shrink-0 overflow-hidden bg-dl-sunk sm:block md:h-14 md:w-14">
+              <img src="/images/character.svg" alt="" class="h-full w-full object-cover object-top" />
             </div>
-            <div class="min-w-0 flex-1">
-              <div class="mb-1.5 truncate text-[13px] text-ink-bright">
-                {{ player.name ?? 'Hunter' }} · <span class="text-xs text-ink-dim">Level {{ player.level }}</span>
+
+            <!-- Level (Chakra Petch, large). -->
+            <div class="flex shrink-0 flex-col leading-none">
+              <span class="font-dl-mono text-dl-label uppercase text-dl-ink-muted">Level</span>
+              <span class="font-dl-display text-dl-numeral font-semibold leading-none text-dl-ink">{{ player.level }}</span>
+            </div>
+
+            <!-- XP — fixed width (~300px), not full-bleed; ink digits, cyan fill only. min-w-0
+                 lets it shrink on narrow screens rather than overflow. -->
+            <div class="w-[300px] min-w-0 shrink">
+              <div class="mb-1 flex items-baseline justify-between font-dl-mono text-dl-label uppercase text-dl-ink-muted">
+                <span>XP</span>
+                <span class="normal-case text-dl-ink">{{ player.progress.current }} / {{ player.xpForNext }}</span>
               </div>
-              <div class="mb-1 flex justify-end text-[10px] text-ink-dim">{{ player.progress.current }} / {{ player.xpForNext }} XP</div>
-              <div class="h-1.5 overflow-hidden rounded-full bg-[#1a1140]">
-                <div class="h-full bg-accent transition-[width] duration-500" :style="{ width: player.xpPct + '%' }" />
+              <div class="h-1.5 overflow-hidden bg-dl-sunk">
+                <div class="h-full bg-dl-cyan transition-[width] duration-dl-sweep ease-dl" :style="{ width: player.xpPct + '%' }" />
               </div>
             </div>
-            <div class="flex shrink-0 gap-1.5 md:gap-2">
-              <div class="rounded-md bg-[#1a1140] px-2 py-1 text-center md:px-2.5">
-                <div class="text-sm font-medium text-ink">{{ player.todayCount }}</div>
-                <div class="text-[9px] text-ink-dim">TODAY</div>
-              </div>
-              <div class="rounded-md border border-danger-line bg-danger-bg px-2 py-1 text-center md:px-2.5">
-                <div class="text-sm font-medium text-danger">{{ player.overdueCount }}</div>
-                <div class="text-[9px] text-[#c87a7a]">OVERDUE</div>
-              </div>
+
+            <!-- Player rank marker — to the RIGHT of the XP bar.
+                 player.rank is a cosmetic level→letter mapping in the player store.
+                 TODO: rankFromLevel — thresholds not finalized -->
+            <span class="corner-cut-sm inline-flex h-7 w-7 shrink-0 items-center justify-center bg-dl-violet-wash font-dl-display text-dl-body font-semibold text-dl-violet">{{ player.rank }}</span>
+          </div>
+
+          <!-- RIGHT group: TODAY / OVERDUE counters, pinned to the right edge. -->
+          <div class="flex shrink-0 items-center gap-3 md:gap-4">
+            <div class="text-center">
+              <div class="font-dl-display text-dl-title font-semibold leading-none text-dl-ink">{{ player.todayCount }}</div>
+              <div class="mt-1 font-dl-mono text-dl-label uppercase text-dl-ink-muted">Today</div>
+            </div>
+            <div class="text-center">
+              <div class="font-dl-display text-dl-title font-semibold leading-none text-dl-magenta">{{ player.overdueCount }}</div>
+              <div class="mt-1 font-dl-mono text-dl-label uppercase text-dl-ink-muted">Overdue</div>
             </div>
           </div>
-        </section>
+        </header>
 
-        <!-- Section 2: content — scrolls inside this section, the page doesn't grow. -->
-        <section class="relative z-[1] min-h-0 flex-1 rounded-[6px] border border-line">
-          <FrameCorners />
-          <div class="h-full overflow-y-auto p-4 md:p-5">
+        <!-- Content — the ONLY scroll container in the shell. The page grows here; the frame
+             does not. min-h-0 above lets flex-1 actually shrink so overflow-y-auto engages. -->
+        <main class="min-h-0 flex-1">
+          <div class="h-full overflow-y-auto p-4 md:p-6">
             <slot />
           </div>
-        </section>
+        </main>
+
+        <!-- Navigation: bottom bar (mobile only). Four primary tabs; in-flow (not fixed) so it
+             sits below the scroll region and honours the safe-area inset on notched devices. -->
+        <nav class="flex shrink-0 border-t border-dl-band-line bg-dl-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+          <NuxtLink
+            v-for="t in mobileTabs" :key="t.label"
+            :to="t.to"
+            class="flex min-h-dl-touch flex-1 flex-col items-center justify-center gap-1 py-2 font-dl-mono text-dl-label uppercase tracking-wide transition-colors"
+            :class="isActive(t.to) ? 'text-dl-violet' : 'text-dl-ink-muted'"
+          >
+            <NavIcon :name="t.icon" class="h-5 w-5" />
+            <span>{{ t.label }}</span>
+          </NuxtLink>
+        </nav>
       </div>
-    </div>
-
-    <!-- Navigation: bottom bar (mobile only). Active tab highlighted in the accent color. -->
-    <nav class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-line bg-panel/95 px-2 py-1.5 backdrop-blur md:hidden">
-      <NuxtLink
-        v-for="t in mobileTabs" :key="t.label"
-        :to="t.to"
-        class="flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] transition-colors"
-        :class="isActive(t.to) ? 'text-accent-light' : 'text-ink-dim'"
-      >
-        <GrimoireIcon :name="t.icon" class="h-5 w-5" />
-        <span>{{ t.label }}</span>
-      </NuxtLink>
-    </nav>
-
-    <!-- Global "System" feedback, above the persistent frame. This container is the only
-         thing that decides *where* toasts sit: they stack, gap-separated, so any
-         combination (a level-up with a rank warning, say) reads without overlap, and each
-         still owns its own lifetime. It stops short of the mobile nav bar and clips there
-         rather than covering it. pointer-events-none keeps the empty container — which
-         spans most of the viewport — from swallowing clicks; each toast opts back in.
-         flex-col-reverse + justify-end: the stack still hangs from the top, but it grows
-         downwards from the *last* toast, so a stack too tall for the container loses its
-         first entry off the bottom rather than its most recent one. -->
-    <div class="pointer-events-none fixed inset-x-0 bottom-[84px] top-6 z-[60] flex flex-col-reverse items-center justify-end gap-3 overflow-hidden px-3 pt-3 md:bottom-8">
-      <LevelUpToast :level="feedback.levelUpTo" />
-      <NoticeToast
-        :messages="feedback.notice?.messages ?? []"
-        :variant="feedback.notice?.variant ?? 'warning'"
-      />
-      <AchievementToast :achievements="feedback.achievements" />
     </div>
   </div>
 </template>
-
-<style scoped>
-/* :deep reaches into the <svg> rendered by <GrimoireIcon> — Tailwind can't express a
-   selector into a child component, so it stays as CSS (the `grimoire-tab` class on the
-   element only serves as a hook for this selector). */
-.grimoire-tab :deep(svg) { width: 16px; height: 16px; flex-shrink: 0; }
-</style>
