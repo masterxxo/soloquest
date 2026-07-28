@@ -1,0 +1,67 @@
+/* "Daylight" redesign token layer (step 1 of 4) — the pieces that cannot be expressed as
+   Tailwind theme values and so live as raw CSS: the corner-cut clip-paths, the focus-ring
+   variants, and the global reduced-motion guard. Colour/type/spacing/motion scales are in
+   tailwind.config.ts under the `dl-*` namespace. This file is additive: it defines new
+   classes only and restyles nothing that already exists. */
+
+:root {
+  /* Mirror of the `dl` tokens that the raw CSS below needs. Kept in sync by hand with
+     tailwind.config.ts (Tailwind's `theme()` is not reliably available in this standalone
+     CSS entry). */
+  --dl-violet: #5b2fe0;
+  --dl-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dl-duration-micro: 120ms;
+  --dl-duration-standard: 200ms;
+  --dl-duration-panel: 280ms;
+  --dl-duration-sweep: 400ms;
+}
+
+/* Corner-cut — bevels the top-left and bottom-right corners. 12px for panels/cards,
+   6px (`-sm`) for small chrome like checkboxes and badges. */
+.corner-cut {
+  clip-path: polygon(
+    12px 0,
+    100% 0,
+    100% calc(100% - 12px),
+    calc(100% - 12px) 100%,
+    0 100%,
+    0 12px
+  );
+}
+.corner-cut-sm {
+  clip-path: polygon(
+    6px 0,
+    100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%,
+    0 6px
+  );
+}
+
+/* Focus ring — 2px violet. Two variants:
+   - `dl-focus-inset`  draws the ring 2px INSIDE the box (offset -2px), for full-width rows
+     whose ring must not spill past the row edge.
+   - `dl-focus-outset` draws the ring 2px OUTSIDE the box (offset +2px), for standalone
+     cells that can breathe. */
+.dl-focus-inset:focus-visible {
+  outline: 2px solid var(--dl-violet);
+  outline-offset: -2px;
+}
+.dl-focus-outset:focus-visible {
+  outline: 2px solid var(--dl-violet);
+  outline-offset: 2px;
+}
+
+/* Respect the user's motion preference everywhere: near-instant transitions/animations
+   when reduced motion is requested. Global on purpose — one rule covers the whole app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

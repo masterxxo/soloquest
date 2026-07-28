@@ -9,16 +9,17 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Muted chip: coloured text on a faint tint with a soft border of the same hue. Deliberately
-// low-key so tag chips never out-shout the rank badge or the Complete button, while staying
-// readable on the dark ground (#0a0618).
+// Daylight rule (step 1 of 4): colour never carries text. A chip renders as a 10%-opacity
+// fill, a full-colour 1px outline (border width comes from the component's `border` class),
+// and its LABEL is always ink (#14111F) — never the hue. The dot (see tagSwatchStyle) is the
+// third place the full colour lives. This is the one deliberately-visible change of step 1.
 export function tagChipStyle(color: TagColor) {
   const hex = TAG_COLOR_HEX[color] ?? TAG_COLOR_HEX.amethyst;
   const [r, g, b] = hexToRgb(hex);
   return {
-    color: hex,
-    borderColor: `rgba(${r}, ${g}, ${b}, 0.5)`,
-    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.14)`,
+    color: '#14111F', // dl.ink — the label is always ink, regardless of the tag hue
+    borderColor: hex, // full colour
+    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.1)`, // fill at 10% opacity
   };
 }
 
