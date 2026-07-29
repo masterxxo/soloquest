@@ -142,7 +142,13 @@ export const useQuestsStore = defineStore('quests', {
       const feedback = useFeedbackStore();
       // Distinct toast slot from the level-up, so a cascade that also levels up shows both
       // without one clobbering the other, and never duplicates the level-up notice.
-      if (result.leveledUp) feedback.showLevelUp(result.player.level);
+      if (result.leveledUp) {
+        feedback.showLevelUp({
+          level: result.player.level,
+          xpGain: player.lastXpGain,
+          xpForNext: player.xpForNext,
+        });
+      }
       if (result.cascadedCompletions > 0) {
         const n = result.cascadedCompletions;
         feedback.showInfo(`Completed with ${n} sub-task${n === 1 ? '' : 's'}.`);
@@ -204,7 +210,13 @@ export const useQuestsStore = defineStore('quests', {
     applyRecurringCompleted(result: RecurringCompleteResult) {
       const player = usePlayerStore();
       player.applyProgress(result.player);
-      if (result.leveledUp) useFeedbackStore().showLevelUp(result.player.level);
+      if (result.leveledUp) {
+        useFeedbackStore().showLevelUp({
+          level: result.player.level,
+          xpGain: player.lastXpGain,
+          xpForNext: player.xpForNext,
+        });
+      }
       // Mark done-for-today and fold in the refreshed streak counters (the /complete
       // payload carries only the three counters, not the whole streak row).
       this.recurringQuests = this.recurringQuests.map((rq) =>
@@ -223,7 +235,13 @@ export const useQuestsStore = defineStore('quests', {
     applyRecurringBackfilled(result: RecurringCompleteResult) {
       const player = usePlayerStore();
       player.applyProgress(result.player);
-      if (result.leveledUp) useFeedbackStore().showLevelUp(result.player.level);
+      if (result.leveledUp) {
+        useFeedbackStore().showLevelUp({
+          level: result.player.level,
+          xpGain: player.lastXpGain,
+          xpForNext: player.xpForNext,
+        });
+      }
       this.recurringQuests = this.recurringQuests.map((rq) =>
         rq.id === result.completion.recurringQuestId
           ? { ...rq, streak: rq.streak ? { ...rq.streak, ...result.streak } : rq.streak }

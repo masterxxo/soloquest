@@ -13,24 +13,50 @@ export interface Notice {
   variant: NoticeVariant;
 }
 
+// A snapshot of a level-up, frozen at the moment it fired (so a later completion can't mutate
+// the "+X XP" the panel is showing). The RewardPanel owns its own hold + close, so — unlike the
+// notice/achievement toasts — there is no auto-hide timer here; the panel calls dismissLevelUp().
+export interface LevelUp {
+  level: number;
+  xpGain: number;
+  xpForNext: number;
+}
+
+// A rank promotion, shown by the same RewardPanel. `rank` is the newly reached band, `from` the
+// previous one. NOTE: nothing in the completion flow fires this yet — rank thresholds are not
+// defined (see detectRankPromotion in lib/ranks.ts); today it is reached only by the dev trigger.
+export interface RankUp {
+  rank: string;
+  from: string;
+}
+
 interface FeedbackState {
-  levelUpTo: number | null;
+  levelUp: LevelUp | null;
+  rankUp: RankUp | null;
   notice: Notice | null;
   achievements: Achievement[] | null;
 }
 
 // Timers kept outside reactive state — they're plain handles, not UI data.
-let levelUpTimer: ReturnType<typeof setTimeout> | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 let achievementsTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useFeedbackStore = defineStore('feedback', {
-  state: (): FeedbackState => ({ levelUpTo: null, notice: null, achievements: null }),
+  state: (): FeedbackState => ({ levelUp: null, rankUp: null, notice: null, achievements: null }),
   actions: {
-    showLevelUp(level: number) {
-      this.levelUpTo = level;
-      if (levelUpTimer) clearTimeout(levelUpTimer);
-      levelUpTimer = setTimeout(() => { this.levelUpTo = null; }, 3500);
+    showLevelUp(payload: LevelUp) {
+      this.levelUp = payload;
+    },
+    dismissLevelUp() {
+      this.levelUp = null;
+    },
+    // Rank promotion. Reached only by the dev trigger for now — see the RankUp note above and the
+    // stubbed detectRankPromotion. The RewardPanel owns its own hold + close (no timer here).
+    showRankUp(payload: RankUp) {
+      this.rankUp = payload;
+    },
+    dismissRankUp() {
+      this.rankUp = null;
     },
     // One toast slot for both variants — the latest notice replaces the previous one.
     showNotice(messages: string[], variant: NoticeVariant) {

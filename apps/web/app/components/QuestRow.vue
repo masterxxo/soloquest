@@ -22,8 +22,20 @@ const props = withDefaults(
     selectable?: boolean;
     // Render nested sub-tasks. The list's "Hide sub-tasks" filter turns this off.
     showSubTasks?: boolean;
+    // Cascade wave (set by a completing parent on its sub-task rows): when `cascadePlay` turns on,
+    // play the SAME checkbox gesture as a real complete after `cascadeDelay`ms — no request of the
+    // row's own (the parent's transaction already closed it). Toggled back off = the parent's
+    // request failed → revert.
+    cascadePlay?: boolean;
+    cascadeDelay?: number | null;
   }>(),
-  { isSubTask: false, selectable: false, showSubTasks: true },
+  {
+    isSubTask: false,
+    selectable: false,
+    showSubTasks: true,
+    cascadePlay: false,
+    cascadeDelay: null,
+  },
 );
 const emit = defineEmits<{
   // Immediate drop (reduced motion, sub-tasks, the 409/detail paths): apply + remove now.
@@ -90,45 +102,92 @@ const { completing, errorMsg, onComplete } = useQuestActions(
 const playing = ref(false);
 const rewarding = computed(() => playing.value || isDone.value);
 
-// The complete choreography is ~1.95s end to end (runtime-verified, see tokens.css). Beat timing,
+// The complete choreography is ~1.95s for a lone row (runtime-verified, see tokens.css). Beats,
 // from the click:
 //   0ms      checkbox flash lime → settle violet + checkmark draws (CSS, via `.dl-check-on`)
 //   ~440ms   checkmark finished
 //   ~950ms   START the exit — a deliberate ~500ms hold on "done" so completion registers
 //   +600ms   slide finished → drop from store + collapse placeholder (owned by the page)
+// A parent WITH sub-tasks runs a downward wave first: the parent gesture at 0ms, then each active
+// sub-task +190ms (WAVE_STEP_MS — RUNTIME-VERIFIED; the board's 70ms read as a simultaneous blink).
+// The exit start is pushed out by the wave length so it still begins ~500ms after the LAST child
+// settles, then the whole group (this root already wraps the sub-tasks) slides out as one block —
+// ~2.5s for 3 children.
 const EXIT_START_MS = 950;
 const SLIDE_MS = 600;
+const WAVE_STEP_MS = 190;
 let exitTimer: ReturnType<typeof setTimeout> | null = null;
+let cascadeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Parent → children signal: turned on when this row (a parent) completes, passed down as each
+// sub-task's `cascadePlay`. Turned back off if the request fails, which reverts the children.
+const cascading = ref(false);
+
+// The active sub-tasks a parent complete will cascade AND that are on screen to animate. Hidden
+// sub-tasks → empty → a parent behaves exactly like a lone row. Empty for a sub-task row itself.
+const cascadeChildren = computed(() =>
+  props.showSubTasks && props.quest.subTasks
+    ? props.quest.subTasks.filter((st) => st.status === 'active')
+    : [],
+);
+// Per-child wave delay down the group; `null` for rows outside the cascade (already-done children).
+function childCascadeDelay(st: Quest): number | null {
+  const i = cascadeChildren.value.findIndex((c) => c.id === st.id);
+  return i === -1 ? null : (i + 1) * WAVE_STEP_MS;
+}
+
+// This row is a sub-task being swept by its parent's cascade: play the identical checkbox gesture
+// (no request of its own — the parent's transaction already closed it) after our delay. A parent
+// request that fails toggles `cascadePlay` back off, reverting us. Optimistic, like the lone row.
+watch(
+  () => props.cascadePlay,
+  (on) => {
+    if (cascadeTimer) { clearTimeout(cascadeTimer); cascadeTimer = null; }
+    if (on && props.cascadeDelay != null && isActive.value) {
+      cascadeTimer = setTimeout(() => { playing.value = true; }, props.cascadeDelay);
+    } else if (!on) {
+      playing.value = false;
+    }
+  },
+);
 
 async function handleComplete() {
   if (playing.value) return;
   playing.value = true;
+  // Fire the sub-task wave immediately (optimistic) unless motion is reduced — the children then
+  // settle on the 0/190/380/570ms cadence while the request is still in flight.
+  if (!reduced.value && cascadeChildren.value.length) cascading.value = true;
   const t0 = performance.now();
   pendingResult = null;
   try {
     await onComplete();
   } catch {
-    playing.value = false; // network error — the row stays active
+    playing.value = false; // network error — revert this row and the whole cascade
+    cascading.value = false;
     return;
   }
-  // Handled failure kept the row on screen (errorMsg set); undo the reward.
-  if (errorMsg.value !== null) { playing.value = false; return; }
+  // Handled failure kept the group on screen (errorMsg set); undo the reward everywhere.
+  if (errorMsg.value !== null) { playing.value = false; cascading.value = false; return; }
   // 409 already emitted `deleted` (its XP was granted elsewhere) — nothing to animate.
   if (!pendingResult) return;
   const result = pendingResult;
 
   // Reduced motion, sub-tasks and the (rare) missing-element case skip the choreography entirely:
-  // apply + drop at once. Under reduced motion the checkbox/title are already in their done state
-  // instantly (CSS guard), so this reads as a clean, immediate completion.
+  // apply + drop at once. Under reduced motion the checkboxes are already in their done state
+  // instantly (CSS guard), so this reads as a clean, immediate completion of the whole group.
   if (reduced.value || props.isSubTask || !root.value) {
     emit('completed', result);
     return;
   }
 
-  // Animated path: grant XP now (counter rolls during the "done" hold), then start the exit so it
-  // begins ~950ms after the click regardless of how fast the request resolved.
+  // Grant XP now — ONE roll of the whole cascade's summed total (result.player is post-cascade),
+  // never one roll per child.
   emit('granted', result);
-  const wait = Math.max(0, EXIT_START_MS - (performance.now() - t0));
+  // Push the exit past the wave: it begins ~500ms after the LAST child settles (or ~950ms for a
+  // lone row, where cascadeChildren is empty). Measured from the click so it holds regardless of
+  // how fast the request resolved.
+  const exitAt = EXIT_START_MS + cascadeChildren.value.length * WAVE_STEP_MS;
+  const wait = Math.max(0, exitAt - (performance.now() - t0));
   exitTimer = setTimeout(() => startExit(result), wait);
 }
 
@@ -164,7 +223,10 @@ function startExit(result: CompleteResult) {
   exitTimer = setTimeout(() => emit('exitDone', { result, placeholder }), SLIDE_MS);
 }
 
-onUnmounted(() => { if (exitTimer) clearTimeout(exitTimer); });
+onUnmounted(() => {
+  if (exitTimer) clearTimeout(exitTimer);
+  if (cascadeTimer) clearTimeout(cascadeTimer);
+});
 
 // Row height: 56px top-level; sub-tasks 44 (touch) / 40 (pointer).
 const rowHeight = computed(() =>
@@ -264,6 +326,8 @@ const rowHeight = computed(() =>
         is-sub-task
         :selectable="selectable"
         :show-sub-tasks="false"
+        :cascade-play="cascading"
+        :cascade-delay="childCascadeDelay(st)"
         @open="(q, e) => emit('open', q, e)"
         @completed="(r) => emit('completed', r)"
         @deleted="(id) => emit('deleted', id)"
