@@ -187,6 +187,23 @@ packages/eslint-config Shared flat config + the language rule
     — thresholds not finalized"). Nothing in the completion flow calls it; the panel is reached only
     by the dev-only `window.rankUp(rank, from)` trigger (`plugins/rank-up-debug.client.ts`). Wiring
     it in waits on the thresholds — treat it as a NEEDS-DOMAIN item, not dead code to "activate".
+    **The lesser feedback — toasts — is the Daylight `ToastStack`** (4c-3), one container at the app
+    root (bottom-right on desktop, above the mobile nav — `safe-area-inset-bottom` — on mobile). The
+    feedback store owns the list, each toast's `hold` and its own auto-dismiss timer, and a 120ms
+    entrance stagger for a batch that lands together. **Three types, none with an action button, each
+    auto-dismissing with a bottom progress bar in its own colour:** `achievement` (ink + gold; a
+    cut badge holding the milestone **threshold** — streak days or lifetime completions — and
+    **never an XP figure**, since `xpBonus` is a deliberately open decision; 5s), `notice` (paper +
+    3px violet bar; neutral system facts, e.g. a 409 "already done today"; 4s) and `error` (paper +
+    3px magenta bar; a failed request — the optimistic update already rolled back, so no retry
+    button; 4s). Store API: `showAchievements` (one toast per unlock, so several at once stack),
+    `showInfo` → notice, `showError` → error, and `showWarnings` (the rank advisory) → notice —
+    **there is no amber "warning" type**; the neutral channel carries advisories. Motion is gated on
+    `useReducedMotion` like the RewardPanel: enter (slide from right + fade) / leave / move collapse
+    to instant under `reduced`, and the progress bar stands full (the JS dismiss timer still fires);
+    `aria-live` is polite for achievement/notice, assertive for error. The grimoire `LevelUpToast`,
+    `NoticeToast` and `AchievementToast` are all gone; `SmokeCanvas` survives only in the grimoire
+    `auth` layout and is deliberately kept.
 
 ---
 

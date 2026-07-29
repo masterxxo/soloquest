@@ -35,21 +35,11 @@ const rankUpCaption = computed(() =>
       <NuxtPage />
     </NuxtLayout>
 
-    <!-- Global "System" feedback. This container is the only thing that decides *where*
-         toasts sit: they stack, gap-separated, so any combination (a level-up with a rank
-         warning, say) reads without overlap, and each still owns its own lifetime. It stops
-         short of the mobile nav bar and clips there rather than covering it. pointer-events-none
-         keeps the empty container — which spans most of the viewport — from swallowing clicks;
-         each toast opts back in. flex-col-reverse + justify-end: the stack still hangs from the
-         top, but it grows downwards from the *last* toast, so a stack too tall for the container
-         loses its first entry off the bottom rather than its most recent one. -->
-    <div class="pointer-events-none fixed inset-x-0 bottom-[84px] top-6 z-[60] flex flex-col-reverse items-center justify-end gap-3 overflow-hidden px-3 pt-3 md:bottom-8">
-      <NoticeToast
-        :messages="feedback.notice?.messages ?? []"
-        :variant="feedback.notice?.variant ?? 'warning'"
-      />
-      <AchievementToast :achievements="feedback.achievements" />
-    </div>
+    <!-- Global "System" toasts (4c-3) — the bottom-right stack (above the mobile nav). One
+         container owns their position + stacking; the feedback store owns their lifetimes. It
+         sits below the RewardPanel (z-70) and never overlaps it (corner vs centre), so a
+         level-up and an achievement can fire together without hiding each other. -->
+    <ToastStack />
 
     <!-- Level up — the loudest of the frequent reward moments (4c-1). An overlay panel over the
          live list, not a toast; it owns its own hold + close and dismisses the store snapshot. -->

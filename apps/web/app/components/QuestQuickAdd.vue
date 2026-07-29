@@ -58,7 +58,7 @@ async function submit() {
     });
     if (!res.ok) {
       const { message } = await readApiError(res, 'Could not create quest.');
-      feedback.showNotice([message], 'warning');
+      feedback.showError(message);
       return;
     }
     emit('created', await res.json());
