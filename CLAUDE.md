@@ -142,6 +142,26 @@ packages/eslint-config Shared flat config + the language rule
     neither extends nor breaks the streak (mirrors the cron judging only closed days). `longest`
     is floored at the stored value so a recompute can never lower a past record. Incremental
     streak updates were removed because they cannot rejoin a gap filled in the middle of a run.
+14. **Motion has one gate and one degrade rule** (redesign step 4 — "Daylight" motion layer).
+    Every reward animation reads `useReducedMotion` (`reduced` = OS `prefers-reduced-motion`
+    **OR** the "Reduce reward effects" toggle), never a media query directly. The app toggle's
+    state, its localStorage persistence and the `<html class="dl-reduce-motion">` stamp all live
+    in that one composable (initialised post-hydration by the `.client` plugin); the Status
+    checkbox merely binds to it. When `reduced`, an animation degrades to its **instant final
+    state** (the settled colour/shape/type), never a faster tween — enforced globally by the
+    `tokens.css` guard zeroing every duration *and* delay under either switch. Reusable motion
+    is defined once and composed, not re-declared per component: the `ease-dl`/`duration-dl-*`
+    Tailwind tokens plus the `dl-*` classes in `tokens.css` (`dl-row-in` mount stagger,
+    `dl-check-*`, `dl-strike`, `dl-roll-*`, `dl-xp-tip`, `dl-row-exit*`/`dl-row-placeholder`).
+    The **complete-quest choreography is ~1.95s** (flash → settle+checkmark → ~500ms hold →
+    slide → placeholder collapse) — timings are **runtime-verified, not from the board** (the
+    board's 280ms was too short to read); do not "restore" them. Its row EXIT is **imperative**
+    (QuestRow measures the row, drops a same-size placeholder to hold the slot, pins the row
+    absolute and slides it off, then the page drops it from the store at slide-end and collapses
+    the placeholder) — deliberately **not** a `<TransitionGroup>` leave (FLIP was unreliable with
+    clip-path + variable heights). Because TODAY is derived from the active list, it decrements
+    when the row is dropped at slide-end (not at slide-start) — keeping the real row means no
+    store change to TODAY logic.
 
 ---
 

@@ -17,6 +17,13 @@ watchEffect(() => player.hydrate(session.value?.user));
 // Load the shared per-user lists once (client-side; the store guards re-fetches).
 onMounted(() => { quests.load(); });
 
+// Lime tip at the XP bar's growing edge — flashes on each gain (increase only; a level-up
+// resets the in-level counter downward). Keyed so the one-shot animation replays every time.
+const xpTipKey = ref(0);
+watch(() => player.progress.current, (now, prev) => {
+  if (now > prev) xpTipKey.value += 1;
+});
+
 const tabs = [
   { to: '/',           label: 'Quests',     icon: 'quests' },
   { to: '/rituals',    label: 'Rituals',    icon: 'rituals' },
@@ -130,10 +137,13 @@ useKeyboardShortcuts([
             <div class="w-[300px] min-w-0 shrink">
               <div class="mb-1 flex items-baseline justify-between font-dl-mono text-dl-label uppercase text-dl-ink-muted">
                 <span>XP</span>
-                <span class="normal-case text-dl-ink">{{ player.progress.current }} / {{ player.xpForNext }}</span>
+                <span class="normal-case text-dl-ink"><RollingNumber :value="player.progress.current" /> / {{ player.xpForNext }}</span>
               </div>
               <div class="h-1.5 overflow-hidden bg-dl-sunk">
-                <div class="h-full bg-dl-cyan transition-[width] duration-dl-sweep ease-dl" :style="{ width: player.xpPct + '%' }" />
+                <!-- 600ms grow (runtime-verified reward pacing), cyan fill only. -->
+                <div class="relative h-full bg-dl-cyan transition-[width] duration-[600ms] ease-dl" :style="{ width: player.xpPct + '%' }">
+                  <span v-if="xpTipKey" :key="xpTipKey" class="dl-xp-tip" />
+                </div>
               </div>
             </div>
 
