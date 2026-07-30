@@ -9,6 +9,7 @@
      tailwind.config.ts (Tailwind's `theme()` is not reliably available in this standalone
      CSS entry). */
   --dl-violet: #5b2fe0;
+  --dl-lime: #b8f02e;
   --dl-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --dl-duration-micro: 120ms;
   --dl-duration-standard: 200ms;
@@ -53,15 +54,174 @@
   outline-offset: 2px;
 }
 
+/* ── Motion layer (step 4a) ──────────────────────────────────────────────────────────────
+   Reusable transition + keyframe classes built on the motion tokens above, so later reward
+   steps (4b/4c) compose these instead of re-declaring easings and durations. The reduced-motion
+   guard at the bottom of this file collapses every one of them to an instant final state. */
+
+/* NOTE — all complete-quest timings below come from RUNTIME VERIFICATION on the live app, NOT the
+   design board. The board's 280ms complete was too fast for the eye to register the state change,
+   so the choreography was re-tuned live to ~1.95s end to end (flash → settle+checkmark → ~500ms
+   hold → slide out → placeholder collapse). Do not "restore" the board timings. */
+
+/* Easing + duration helpers — compose with a `transition-property`/Tailwind `transition-[…]`. */
+.dl-ease-micro {
+  transition-timing-function: var(--dl-ease);
+  transition-duration: var(--dl-duration-micro);
+}
+.dl-ease-standard {
+  transition-timing-function: var(--dl-ease);
+  transition-duration: var(--dl-duration-standard);
+}
+.dl-ease-panel {
+  transition-timing-function: var(--dl-ease);
+  transition-duration: var(--dl-duration-panel);
+}
+
+/* List entry stagger — a per-row MOUNT animation (fade + short lift). Each row carries its own
+   `--dl-stagger-delay` inline (capped in the page). Deliberately NOT a `<TransitionGroup>`: the
+   row EXIT is driven imperatively (placeholder + absolute slide), so the container must stay a
+   plain element the exit controller can measure and mutate. */
+@keyframes dl-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.dl-row-in {
+  /* `backwards` holds the hidden `from` state during the stagger delay, but does NOT persist after
+     the animation — so it can never override the imperative exit transform later. */
+  animation: dl-row-in var(--dl-duration-standard) var(--dl-ease) backwards;
+  animation-delay: var(--dl-stagger-delay, 0ms);
+}
+
+/* Complete-quest checkbox — flash lime, settle violet, draw the checkmark. Driven by `.dl-check-on`
+   which the row adds the instant the box is pressed.
+   • fill: lime at 0ms → violet by ~190ms (dl-check-settle).
+   • checkmark: stroke drawn over 340ms after a 100ms delay (finishes ~440ms). */
+.dl-check-mark {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  transition: stroke-dashoffset 340ms var(--dl-ease) 100ms;
+}
+.dl-check-on {
+  animation: dl-check-settle 190ms var(--dl-ease) forwards;
+}
+.dl-check-on .dl-check-mark {
+  stroke-dashoffset: 0;
+}
+@keyframes dl-check-settle {
+  0% {
+    background-color: var(--dl-lime);
+    border-color: var(--dl-lime);
+  }
+  72% {
+    background-color: var(--dl-lime);
+    border-color: var(--dl-lime);
+  }
+  100% {
+    background-color: var(--dl-violet);
+    border-color: var(--dl-violet);
+  }
+}
+
+/* Title strike — a line drawn left→right via `::after` (width 0→100%, 380ms after a 260ms delay),
+   and the text dimming to muted (280ms delay), both trailing the checkbox so the beats sequence. */
+.dl-strike {
+  position: relative;
+  transition: color 120ms var(--dl-ease) 280ms;
+}
+.dl-strike::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 62%;
+  height: 1px;
+  width: 0;
+  background: currentColor;
+  transition: width 380ms var(--dl-ease) 260ms;
+}
+.dl-strike-on::after {
+  width: 100%;
+}
+
+/* Row EXIT — imperative placeholder + slide. The class carries only the transition + easing; the
+   controller sets position/top/left/width inline from live measurements and toggles `-go` to fire
+   the slide (`translateX(110%)` carries the row fully off the right edge, above its neighbours). */
+.dl-row-exit {
+  transition:
+    transform 600ms var(--dl-ease),
+    opacity 600ms var(--dl-ease);
+  will-change: transform, opacity;
+}
+.dl-row-exit-go {
+  transform: translateX(110%);
+  opacity: 0;
+}
+/* Placeholder — an empty box the exact size of the vacated row that holds its space during the
+   slide, then collapses (height + margin → 0) so the rows below glide up in one motion. */
+.dl-row-placeholder {
+  overflow: hidden;
+  transition:
+    height 400ms var(--dl-ease),
+    margin-top 400ms var(--dl-ease);
+}
+
+/* XP bar leading-edge lime tip — a brief flash at the growing edge when XP is granted. Remounted
+   (keyed) on each gain so the one-shot animation replays. */
+.dl-xp-tip {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 3px;
+  background: var(--dl-lime);
+  animation: dl-xp-tip var(--dl-duration-sweep) var(--dl-ease) forwards;
+}
+@keyframes dl-xp-tip {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Rolling XP counter (RollingNumber) — a per-digit odometer, ~520ms. Ink, never cyan (cyan is the
+   bar fill only). The strip translates to the target digit; the column clips to one line. */
+.dl-roll {
+  display: inline-flex;
+  line-height: 1;
+}
+.dl-roll-col {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: text-bottom;
+}
+.dl-roll-strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 520ms var(--dl-ease);
+}
+.dl-roll-cell {
+  height: 1em;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Respect the user's motion preference everywhere: near-instant transitions/animations
-   when reduced motion is requested. Global on purpose — one rule covers the whole app. */
+   when reduced motion is requested. Global on purpose — one rule covers the whole app.
+   Delays are zeroed too, so a reward degrades to its final state at once — never a delayed,
+   still-sequenced flash. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
@@ -73,7 +233,9 @@
 :root.dl-reduce-motion *::before,
 :root.dl-reduce-motion *::after {
   animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
   scroll-behavior: auto !important;
 }

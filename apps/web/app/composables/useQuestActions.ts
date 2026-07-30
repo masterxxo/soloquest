@@ -46,7 +46,7 @@ export function useQuestActions(
       if (!res.ok) {
         const { message } = await readApiError(res, 'Could not complete quest.');
         errorMsg.value = message;
-        feedback.showNotice([message], 'warning');
+        feedback.showError(message);
         return;
       }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Quest, CompleteResult } from '~/lib/api-client';
 import { useQuestActions } from '~/composables/useQuestActions';
+import { useReducedMotion } from '~/composables/useReducedMotion';
 import { priorityMarker, PRIORITY_DL_CLASS } from '~/lib/priority';
 import { localDateString } from '~/lib/date';
 
@@ -21,11 +22,29 @@ const props = withDefaults(
     selectable?: boolean;
     // Render nested sub-tasks. The list's "Hide sub-tasks" filter turns this off.
     showSubTasks?: boolean;
+    // Cascade wave (set by a completing parent on its sub-task rows): when `cascadePlay` turns on,
+    // play the SAME checkbox gesture as a real complete after `cascadeDelay`ms — no request of the
+    // row's own (the parent's transaction already closed it). Toggled back off = the parent's
+    // request failed → revert.
+    cascadePlay?: boolean;
+    cascadeDelay?: number | null;
   }>(),
-  { isSubTask: false, selectable: false, showSubTasks: true },
+  {
+    isSubTask: false,
+    selectable: false,
+    showSubTasks: true,
+    cascadePlay: false,
+    cascadeDelay: null,
+  },
 );
 const emit = defineEmits<{
+  // Immediate drop (reduced motion, sub-tasks, the 409/detail paths): apply + remove now.
   completed: [result: CompleteResult];
+  // Reward granted (top-level animated path): apply player XP now so the counter rolls during the
+  // "done" hold, WITHOUT yet dropping the row from the list.
+  granted: [result: CompleteResult];
+  // The slide has finished: drop the quest from the store and collapse the placeholder.
+  exitDone: [payload: { result: CompleteResult; placeholder: HTMLElement | null }];
   deleted: [id: string];
   open: [quest: Quest, event: MouseEvent];
 }>();
@@ -65,10 +84,149 @@ const tags = computed(() => props.quest.tags ?? []);
 const firstTag = computed(() => tags.value[0]);
 const extraTagCount = computed(() => Math.max(0, tags.value.length - 1));
 
+const { reduced } = useReducedMotion();
+const root = ref<HTMLElement | null>(null);
+
+// The complete result is captured (not emitted) here so THIS component owns the timeline: the
+// store drop is deferred until the exit animation is over, instead of firing the instant the
+// request resolves.
+let pendingResult: CompleteResult | null = null;
 const { completing, errorMsg, onComplete } = useQuestActions(
   () => props.quest,
-  { completed: (r) => emit('completed', r), deleted: (id) => emit('deleted', id) },
+  { completed: (r) => { pendingResult = r; }, deleted: (id) => emit('deleted', id) },
 );
+
+// Local reward state, set the instant the checkbox is pressed — the checkbox settles and the title
+// strikes immediately (via CSS), decoupled from the network round-trip. Only a failed request
+// rolls it back, so the checkbox never lies about an active quest.
+const playing = ref(false);
+const rewarding = computed(() => playing.value || isDone.value);
+
+// The complete choreography is ~1.95s for a lone row (runtime-verified, see tokens.css). Beats,
+// from the click:
+//   0ms      checkbox flash lime → settle violet + checkmark draws (CSS, via `.dl-check-on`)
+//   ~440ms   checkmark finished
+//   ~950ms   START the exit — a deliberate ~500ms hold on "done" so completion registers
+//   +600ms   slide finished → drop from store + collapse placeholder (owned by the page)
+// A parent WITH sub-tasks runs a downward wave first: the parent gesture at 0ms, then each active
+// sub-task +190ms (WAVE_STEP_MS — RUNTIME-VERIFIED; the board's 70ms read as a simultaneous blink).
+// The exit start is pushed out by the wave length so it still begins ~500ms after the LAST child
+// settles, then the whole group (this root already wraps the sub-tasks) slides out as one block —
+// ~2.5s for 3 children.
+const EXIT_START_MS = 950;
+const SLIDE_MS = 600;
+const WAVE_STEP_MS = 190;
+let exitTimer: ReturnType<typeof setTimeout> | null = null;
+let cascadeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Parent → children signal: turned on when this row (a parent) completes, passed down as each
+// sub-task's `cascadePlay`. Turned back off if the request fails, which reverts the children.
+const cascading = ref(false);
+
+// The active sub-tasks a parent complete will cascade AND that are on screen to animate. Hidden
+// sub-tasks → empty → a parent behaves exactly like a lone row. Empty for a sub-task row itself.
+const cascadeChildren = computed(() =>
+  props.showSubTasks && props.quest.subTasks
+    ? props.quest.subTasks.filter((st) => st.status === 'active')
+    : [],
+);
+// Per-child wave delay down the group; `null` for rows outside the cascade (already-done children).
+function childCascadeDelay(st: Quest): number | null {
+  const i = cascadeChildren.value.findIndex((c) => c.id === st.id);
+  return i === -1 ? null : (i + 1) * WAVE_STEP_MS;
+}
+
+// This row is a sub-task being swept by its parent's cascade: play the identical checkbox gesture
+// (no request of its own — the parent's transaction already closed it) after our delay. A parent
+// request that fails toggles `cascadePlay` back off, reverting us. Optimistic, like the lone row.
+watch(
+  () => props.cascadePlay,
+  (on) => {
+    if (cascadeTimer) { clearTimeout(cascadeTimer); cascadeTimer = null; }
+    if (on && props.cascadeDelay != null && isActive.value) {
+      cascadeTimer = setTimeout(() => { playing.value = true; }, props.cascadeDelay);
+    } else if (!on) {
+      playing.value = false;
+    }
+  },
+);
+
+async function handleComplete() {
+  if (playing.value) return;
+  playing.value = true;
+  // Fire the sub-task wave immediately (optimistic) unless motion is reduced — the children then
+  // settle on the 0/190/380/570ms cadence while the request is still in flight.
+  if (!reduced.value && cascadeChildren.value.length) cascading.value = true;
+  const t0 = performance.now();
+  pendingResult = null;
+  try {
+    await onComplete();
+  } catch {
+    playing.value = false; // network error — revert this row and the whole cascade
+    cascading.value = false;
+    return;
+  }
+  // Handled failure kept the group on screen (errorMsg set); undo the reward everywhere.
+  if (errorMsg.value !== null) { playing.value = false; cascading.value = false; return; }
+  // 409 already emitted `deleted` (its XP was granted elsewhere) — nothing to animate.
+  if (!pendingResult) return;
+  const result = pendingResult;
+
+  // Reduced motion, sub-tasks and the (rare) missing-element case skip the choreography entirely:
+  // apply + drop at once. Under reduced motion the checkboxes are already in their done state
+  // instantly (CSS guard), so this reads as a clean, immediate completion of the whole group.
+  if (reduced.value || props.isSubTask || !root.value) {
+    emit('completed', result);
+    return;
+  }
+
+  // Grant XP now — ONE roll of the whole cascade's summed total (result.player is post-cascade),
+  // never one roll per child.
+  emit('granted', result);
+  // Push the exit past the wave: it begins ~500ms after the LAST child settles (or ~950ms for a
+  // lone row, where cascadeChildren is empty). Measured from the click so it holds regardless of
+  // how fast the request resolved.
+  const exitAt = EXIT_START_MS + cascadeChildren.value.length * WAVE_STEP_MS;
+  const wait = Math.max(0, exitAt - (performance.now() - t0));
+  exitTimer = setTimeout(() => startExit(result), wait);
+}
+
+// Placeholder-holds-space exit (imperative, per the verified pattern — NOT a TransitionGroup leave):
+// drop a same-size empty box into the row's slot, pin the row absolute above its neighbours, slide
+// it off to the right, then hand the placeholder to the page to collapse once the row is gone.
+function startExit(result: CompleteResult) {
+  const el = root.value;
+  const container = el?.parentElement ?? null;
+  if (!el || !container) { emit('completed', result); return; }
+
+  const top = el.offsetTop;
+  const left = el.offsetLeft;
+  const width = el.offsetWidth;
+  const height = el.offsetHeight;
+
+  const placeholder = document.createElement('div');
+  placeholder.className = 'dl-row-placeholder';
+  placeholder.style.height = `${height}px`;
+  placeholder.style.marginTop = '0px';
+  el.after(placeholder);
+
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+  el.style.position = 'absolute';
+  el.style.top = `${top}px`;
+  el.style.left = `${left}px`;
+  el.style.width = `${width}px`;
+  el.style.zIndex = '20';
+  el.classList.add('dl-row-exit');
+  // Two frames so the browser commits the pinned start state before the transform transitions.
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('dl-row-exit-go')));
+
+  exitTimer = setTimeout(() => emit('exitDone', { result, placeholder }), SLIDE_MS);
+}
+
+onUnmounted(() => {
+  if (exitTimer) clearTimeout(exitTimer);
+  if (cascadeTimer) clearTimeout(cascadeTimer);
+});
 
 // Row height: 56px top-level; sub-tasks 44 (touch) / 40 (pointer).
 const rowHeight = computed(() =>
@@ -77,7 +235,7 @@ const rowHeight = computed(() =>
 </script>
 
 <template>
-  <div class="flex flex-col">
+  <div ref="root" class="dl-row-in flex flex-col">
     <div
       class="relative flex items-center gap-2 border border-dl-hairline bg-dl-surface pl-3 pr-2 md:gap-3"
       :class="rowHeight"
@@ -85,47 +243,57 @@ const rowHeight = computed(() =>
       <!-- 3px leading status stripe. -->
       <span class="absolute inset-y-0 left-0 w-[3px]" :class="stripeClass" aria-hidden="true" />
 
-      <!-- Checkbox — completes the quest. 44px touch target; a 20px cut box inside. -->
+      <!-- Checkbox — completes the quest. 44px touch target; a 20px cut box inside. On press the
+           box flashes lime → settles violet (~190ms) and the checkmark draws in (finishes ~440ms),
+           driven by `.dl-check-on`; reduced motion collapses that to the settled state at once. -->
       <button
         v-if="isActive"
         type="button"
         role="checkbox"
-        :aria-checked="false"
+        :aria-checked="rewarding"
         :aria-label="`Complete ${quest.title}`"
         :disabled="completing"
         class="grid min-h-dl-touch min-w-dl-touch shrink-0 place-items-center disabled:cursor-not-allowed md:min-h-0 md:min-w-0"
-        :class="completing ? 'animate-pulse' : 'cursor-pointer'"
-        @click="onComplete"
+        :class="completing ? 'cursor-progress' : 'cursor-pointer'"
+        @click="handleComplete"
       >
         <span
-          class="corner-cut-sm grid h-5 w-5 place-items-center border border-dl-band-line bg-dl-surface text-dl-violet transition-colors duration-dl-standard ease-dl hover:border-dl-violet"
+          class="dl-check corner-cut-sm grid h-5 w-5 place-items-center border bg-dl-surface transition-colors duration-dl-standard ease-dl"
+          :class="rewarding ? 'dl-check-on border-dl-violet' : 'border-dl-band-line hover:border-dl-violet'"
         >
-          <span v-if="completing" class="text-dl-label leading-none">…</span>
+          <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" aria-hidden="true">
+            <path class="dl-check-mark" d="M4 8.5 L7 11.5 L12.5 5" stroke="#fff" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" />
+          </svg>
         </span>
       </button>
-      <!-- Done: a filled lime check (appears during the optimistic gap before the row leaves). -->
+      <!-- Done: the settled violet check (only ever the brief optimistic moment before the row
+           leaves). -->
       <span
         v-else
         class="grid min-h-dl-touch min-w-dl-touch shrink-0 place-items-center md:min-h-0 md:min-w-0"
         aria-hidden="true"
       >
-        <span class="corner-cut-sm grid h-5 w-5 place-items-center border border-dl-lime bg-dl-lime/20 text-[0.7rem] leading-none text-dl-ink">✓</span>
+        <span class="dl-check dl-check-on corner-cut-sm grid h-5 w-5 place-items-center border border-dl-violet bg-dl-violet">
+          <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" aria-hidden="true">
+            <path class="dl-check-mark" d="M4 8.5 L7 11.5 L12.5 5" stroke="#fff" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" />
+          </svg>
+        </span>
       </span>
 
       <!-- Title — grows, wins width. Opens detail when selectable. -->
       <button
         v-if="selectable"
         type="button"
-        class="dl-focus-inset min-w-0 flex-1 cursor-pointer truncate border-0 bg-transparent p-0 text-left text-dl-body text-dl-ink [font:inherit] hover:text-dl-violet"
-        :class="isDone ? 'text-dl-ink-faint line-through' : ''"
+        class="dl-strike dl-focus-inset min-w-0 flex-1 cursor-pointer truncate border-0 bg-transparent p-0 text-left text-dl-body text-dl-ink [font:inherit] hover:text-dl-violet"
+        :class="rewarding ? 'dl-strike-on text-dl-ink-faint' : ''"
         @click="emit('open', quest, $event)"
       >
         {{ quest.title }}
       </button>
       <span
         v-else
-        class="min-w-0 flex-1 truncate text-dl-body text-dl-ink"
-        :class="isDone ? 'text-dl-ink-faint line-through' : ''"
+        class="dl-strike min-w-0 flex-1 truncate text-dl-body text-dl-ink"
+        :class="rewarding ? 'dl-strike-on text-dl-ink-faint' : ''"
       >{{ quest.title }}</span>
 
       <!-- Pinned right: tags → priority glyph → RankBadge. -->
@@ -158,6 +326,8 @@ const rowHeight = computed(() =>
         is-sub-task
         :selectable="selectable"
         :show-sub-tasks="false"
+        :cascade-play="cascading"
+        :cascade-delay="childCascadeDelay(st)"
         @open="(q, e) => emit('open', q, e)"
         @completed="(r) => emit('completed', r)"
         @deleted="(id) => emit('deleted', id)"

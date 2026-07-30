@@ -142,6 +142,68 @@ packages/eslint-config Shared flat config + the language rule
     neither extends nor breaks the streak (mirrors the cron judging only closed days). `longest`
     is floored at the stored value so a recompute can never lower a past record. Incremental
     streak updates were removed because they cannot rejoin a gap filled in the middle of a run.
+14. **Motion has one gate and one degrade rule** (redesign step 4 — "Daylight" motion layer).
+    Every reward animation reads `useReducedMotion` (`reduced` = OS `prefers-reduced-motion`
+    **OR** the "Reduce reward effects" toggle), never a media query directly. The app toggle's
+    state, its localStorage persistence and the `<html class="dl-reduce-motion">` stamp all live
+    in that one composable (initialised post-hydration by the `.client` plugin); the Status
+    checkbox merely binds to it. When `reduced`, an animation degrades to its **instant final
+    state** (the settled colour/shape/type), never a faster tween — enforced globally by the
+    `tokens.css` guard zeroing every duration *and* delay under either switch. Reusable motion
+    is defined once and composed, not re-declared per component: the `ease-dl`/`duration-dl-*`
+    Tailwind tokens plus the `dl-*` classes in `tokens.css` (`dl-row-in` mount stagger,
+    `dl-check-*`, `dl-strike`, `dl-roll-*`, `dl-xp-tip`, `dl-row-exit*`/`dl-row-placeholder`).
+    The **complete-quest choreography is ~1.95s** (flash → settle+checkmark → ~500ms hold →
+    slide → placeholder collapse) — timings are **runtime-verified, not from the board** (the
+    board's 280ms was too short to read); do not "restore" them. Its row EXIT is **imperative**
+    (QuestRow measures the row, drops a same-size placeholder to hold the slot, pins the row
+    absolute and slides it off, then the page drops it from the store at slide-end and collapses
+    the placeholder) — deliberately **not** a `<TransitionGroup>` leave (FLIP was unreliable with
+    clip-path + variable heights). Because TODAY is derived from the active list, it decrements
+    when the row is dropped at slide-end (not at slide-start) — keeping the real row means no
+    store change to TODAY logic. A parent WITH sub-tasks reuses the *same* exit unchanged (the
+    QuestRow root already wraps its sub-tasks, so the whole group lifts as one block); before it,
+    a **downward checkmark wave** runs — the parent gesture at 0ms, each active sub-task +190ms
+    (`WAVE_STEP_MS`, runtime-verified, not the board's 70ms) — driven purely in the frontend by a
+    `cascadePlay`/`cascadeDelay` prop the parent passes down (the children play the identical
+    checkbox gesture with no request of their own; the backend cascade is untouched). The XP
+    counter still rolls **once** for the summed total (`granted` applies the post-cascade
+    `result.player`), and the exit start is pushed out so it still lands ~500ms after the last
+    child settles. **Reward moments** (level up = 4c-1; rank up = 4c-2) are a reusable
+    **`RewardPanel`** overlay — NOT a toast — rendered at the app root over the still-live list
+    (`pointer-events-none` overlay, `pointer-events-auto` panel; an outside `pointerdown` closes
+    it without consuming the event, Escape closes via the modal stack, and it self-hides after
+    `hold`). Its `brackets` (L-layers per corner), `hold`, optional rank `ladder`, `inverted`
+    (S-rank dark scene) and `valueSize` are props: level up = 1 bracket / 3s; rank up = 2 / 4s;
+    **S rank = 3 / 5s + full-screen ink `inverted`** — the ONLY inverted moment in the design.
+    Two effects are **safety-gated** (removed, not slowed, under `reduced` — flash-adjacent, not
+    polish): the chromatic-split **glitch** (the split *layer* is dropped; a static fringe would be
+    worse) and the S-rank **inversion flip** (present in its final dark state, no animated flip).
+    Level up fires via `feedback.showLevelUp(...)` (a frozen `{level, xpGain, xpForNext}` snapshot;
+    `player.lastXpGain` is a display-only projection for "+X XP"); the grimoire `LevelUpToast` is
+    gone. **Rank up is built but does NOT fire for real** — `detectRankPromotion(old,new)` in
+    `lib/ranks.ts` is a deliberate stub (`// TODO: RANK THRESHOLDS NOT DEFINED`) that always returns
+    null because the rank-band thresholds are not domain-confirmed (like the layout's "rankFromLevel
+    — thresholds not finalized"). Nothing in the completion flow calls it; the panel is reached only
+    by the dev-only `window.rankUp(rank, from)` trigger (`plugins/rank-up-debug.client.ts`). Wiring
+    it in waits on the thresholds — treat it as a NEEDS-DOMAIN item, not dead code to "activate".
+    **The lesser feedback — toasts — is the Daylight `ToastStack`** (4c-3), one container at the app
+    root (bottom-right on desktop, above the mobile nav — `safe-area-inset-bottom` — on mobile). The
+    feedback store owns the list, each toast's `hold` and its own auto-dismiss timer, and a 120ms
+    entrance stagger for a batch that lands together. **Three types, none with an action button, each
+    auto-dismissing with a bottom progress bar in its own colour:** `achievement` (ink + gold; a
+    cut badge holding the milestone **threshold** — streak days or lifetime completions — and
+    **never an XP figure**, since `xpBonus` is a deliberately open decision; 5s), `notice` (paper +
+    3px violet bar; neutral system facts, e.g. a 409 "already done today"; 4s) and `error` (paper +
+    3px magenta bar; a failed request — the optimistic update already rolled back, so no retry
+    button; 4s). Store API: `showAchievements` (one toast per unlock, so several at once stack),
+    `showInfo` → notice, `showError` → error, and `showWarnings` (the rank advisory) → notice —
+    **there is no amber "warning" type**; the neutral channel carries advisories. Motion is gated on
+    `useReducedMotion` like the RewardPanel: enter (slide from right + fade) / leave / move collapse
+    to instant under `reduced`, and the progress bar stands full (the JS dismiss timer still fires);
+    `aria-live` is polite for achievement/notice, assertive for error. The grimoire `LevelUpToast`,
+    `NoticeToast` and `AchievementToast` are all gone; `SmokeCanvas` survives only in the grimoire
+    `auth` layout and is deliberately kept.
 
 ---
 

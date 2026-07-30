@@ -64,7 +64,7 @@ export function useRecurringQuestActions(
       if (!res.ok) {
         const { message } = await readApiError(res, 'Could not complete ritual.');
         errorMsg.value = message;
-        feedback.showNotice([message], 'warning');
+        feedback.showError(message);
         return;
       }
 
@@ -106,7 +106,7 @@ export function useRecurringQuestActions(
       if (!res.ok) {
         const { message } = await readApiError(res, 'Could not complete that day.');
         errorMsg.value = message;
-        feedback.showNotice([message], 'warning');
+        feedback.showError(message);
         return;
       }
 

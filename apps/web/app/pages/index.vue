@@ -2,12 +2,15 @@
 import { storeToRefs } from 'pinia';
 import type { Quest, QuestWithWarnings, CompleteResult } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
+import { usePlayerStore } from '~/stores/player';
 import { useEntityModals } from '~/composables/useEntityModals';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useQuestFilters } from '~/composables/useQuestFilters';
+import { useReducedMotion } from '~/composables/useReducedMotion';
 import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
+const player = usePlayerStore();
 const { activeQuests } = storeToRefs(quests);
 
 // Counts/lists come from the shared store; the layout already loaded them, but calling
@@ -46,8 +49,28 @@ function onQuestEdited(result: QuestWithWarnings) {
   onUpdated(result);
   closeEdit();
 }
+// Immediate completion (reduced motion, sub-tasks, 409): apply everything and drop the row now.
 function onCompleted(result: CompleteResult) {
   quests.applyCompleted(result);
+}
+// Animated path, "done" beat: the row is still on the list; apply only the server-authoritative
+// player XP so the telemetry counter rolls and the bar grows while the row holds on "done".
+function onGranted(result: CompleteResult) {
+  player.applyProgress(result.player);
+}
+// Animated path, after the slide: NOW drop the quest from the store — this removes the (already
+// off-screen) row and decrements TODAY. applyCompleted re-applies the same XP idempotently and
+// fires the level-up toast. Then collapse the placeholder so the rows below glide up.
+function onExitDone({ result, placeholder }: { result: CompleteResult; placeholder: HTMLElement | null }) {
+  quests.applyCompleted(result);
+  if (!placeholder) return;
+  const container = placeholder.parentElement;
+  const gap = container ? parseFloat(getComputedStyle(container).rowGap || '0') || 0 : 0;
+  requestAnimationFrame(() => {
+    placeholder.style.height = '0px';
+    placeholder.style.marginTop = `-${gap}px`; // cancel one flex gap so the slot closes fully
+  });
+  setTimeout(() => placeholder.remove(), 400);
 }
 function onDeleted(id: string) {
   quests.removeQuest(id);
@@ -88,6 +111,17 @@ useKeyboardShortcuts([
 // (which reads the same composable). The page keeps only what is genuinely its own: the
 // list to narrow, and clearing from its own empty state.
 const { filterQuests, clearFilter, hideSubTasks } = useQuestFilters();
+
+// ── List mount stagger ──────────────────────────────────────────────────────────
+// Each row appears ~20ms after the one above (capped so a long list doesn't trail forever),
+// via the per-row `dl-row-in` mount animation. The delay rides in as a custom property the
+// animation reads, and is zeroed under reduced motion — the list then appears at once rather
+// than staggering instantly-visible rows over time.
+const { reduced } = useReducedMotion();
+function staggerStyle(index: number) {
+  const delay = reduced.value ? 0 : Math.min(index, 12) * 20;
+  return { '--dl-stagger-delay': `${delay}ms` };
+}
 
 // ── Grouping by deadline ────────────────────────────────────────────────────────
 type QuestGroup = {
@@ -172,15 +206,24 @@ const questGroups = computed<QuestGroup[]>(() => {
           >{{ group.label }}</span>
           <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ group.quests.length }}</span>
         </div>
-        <div class="flex flex-col gap-1">
+        <!-- Plain container (NOT a TransitionGroup): the row EXIT is imperative (placeholder +
+             absolute slide, owned by QuestRow → onExitDone here), and the ENTER stagger is a
+             per-row mount animation (`dl-row-in` + the `--dl-stagger-delay` set below).
+             `relative` anchors the absolute exiting row; `overflow-x: clip` swallows its 110%
+             slide-out so no ancestor grows a horizontal scrollbar (clip, unlike hidden, does not
+             make this a scroll container on the y-axis). -->
+        <div class="relative flex flex-col gap-1 [overflow-x:clip]">
           <QuestRow
-            v-for="q in group.quests"
+            v-for="(q, i) in group.quests"
             :key="q.id"
             :quest="q"
+            :style="staggerStyle(i)"
             selectable
             :show-sub-tasks="!hideSubTasks"
             @open="openQuestDetail"
+            @granted="onGranted"
             @completed="onCompleted"
+            @exit-done="onExitDone"
             @deleted="onDeleted"
           />
         </div>

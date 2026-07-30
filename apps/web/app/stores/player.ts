@@ -11,6 +11,9 @@ interface PlayerState {
   name: string | null;
   xp: number;
   level: number;
+  // Display-only: the size of the most recent XP increase, so the level-up panel can show
+  // "+X XP". Not part of the XP/level math — purely a projection for feedback.
+  lastXpGain: number;
 }
 
 // Cosmetic hunter rank derived from level — purely presentational (the server has no
@@ -26,7 +29,7 @@ function rankForLevel(level: number): string {
 }
 
 export const usePlayerStore = defineStore('player', {
-  state: (): PlayerState => ({ name: null, xp: 0, level: 1 }),
+  state: (): PlayerState => ({ name: null, xp: 0, level: 1, lastXpGain: 0 }),
   getters: {
     // Level + in-level progress derived from total XP via the shared curve.
     progress: (state) => levelFromTotalXp(state.xp), // { level, current, needed }
@@ -63,7 +66,11 @@ export const usePlayerStore = defineStore('player', {
       this.level = user?.level ?? 1;
     },
     // Server-authoritative xp/level from the /complete response — no XP math here.
+    // `lastXpGain` records the size of a real increase; when the same result is applied a
+    // second time (the 4a animated path applies at `granted`, then again at drop) the xp is
+    // unchanged, so the gain is preserved rather than reset to 0.
     applyProgress(p: { xp: number; level: number }) {
+      if (p.xp !== this.xp) this.lastXpGain = p.xp - this.xp;
       this.xp = p.xp;
       this.level = p.level;
     },

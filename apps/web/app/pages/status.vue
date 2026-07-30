@@ -4,6 +4,7 @@ import { usePlayerStore } from '~/stores/player';
 import { useQuestsStore } from '~/stores/quests';
 import { useSignOut } from '~/composables/useSignOut';
 import { useUserSettings } from '~/composables/useUserSettings';
+import { useReducedMotion } from '~/composables/useReducedMotion';
 import { client } from '~/lib/api-client';
 import {
   STREAK_ACHIEVEMENT_THRESHOLDS,
@@ -57,19 +58,10 @@ function onTimezoneChange(event: Event) {
 }
 
 // Reduce reward effects: a persisted client preference that forces the static path independently
-// of the OS setting. Toggling stamps a class on <html> that the reward code (and the motion
-// guard in tokens.css) reads.
-const reduceMotion = ref(false);
-function applyReduceMotion() {
-  if (!import.meta.client) return;
-  localStorage.setItem('dl-reduce-motion', reduceMotion.value ? '1' : '0');
-  document.documentElement.classList.toggle('dl-reduce-motion', reduceMotion.value);
-}
-onMounted(() => {
-  reduceMotion.value = localStorage.getItem('dl-reduce-motion') === '1';
-  applyReduceMotion();
-});
-watch(reduceMotion, applyReduceMotion);
+// of the OS setting. State, persistence (localStorage) and the `<html class="dl-reduce-motion">`
+// stamp all live in useReducedMotion — the single source both this toggle and every reward
+// animation read — so binding the checkbox to it is all this page needs to do.
+const { reduceEffects } = useReducedMotion();
 
 const { loggingOut, onSignOut } = useSignOut();
 </script>
@@ -225,7 +217,7 @@ const { loggingOut, onSignOut } = useSignOut();
               <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink">Reduce reward effects</span>
               <span class="text-dl-meta text-dl-ink-muted">Forces the static reward path — no chromatic split, no full-surface inversion — independently of the OS reduced-motion setting.</span>
             </span>
-            <input v-model="reduceMotion" type="checkbox" class="dl-focus-inset mt-1 h-5 w-5 shrink-0 cursor-pointer accent-dl-violet" />
+            <input v-model="reduceEffects" type="checkbox" class="dl-focus-inset mt-1 h-5 w-5 shrink-0 cursor-pointer accent-dl-violet" />
           </label>
 
           <div class="flex flex-col gap-0.5">
