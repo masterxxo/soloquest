@@ -28,15 +28,17 @@ const stripeClass = computed(() =>
 );
 
 // The 7-day strip is a preview of the rolling window, never the source (the streak numeral is
-// the truth). The list payload doesn't carry per-day history, so only today's cell is live;
-// the earlier six render in their NOT SCHEDULED form as a preview.
+// the truth). It renders the list payload's real per-day history (`last7`, oldest → today in
+// the user's tz): each backend status maps 1:1 onto the shared HeatCell form vocabulary, the
+// same forms the heatmap uses. The final cell is TODAY — the backend can't encode "due but not
+// yet done" as a status (an in-progress today comes back not_scheduled), so we resolve its
+// pending look here from isDueToday. That pending pip is what the complete animation will fill.
 const todayState = computed<HeatState>(() =>
   done.value ? 'done' : due.value ? 'today_pending' : 'not_scheduled',
 );
-const strip = computed<HeatState[]>(() => [
-  ...Array<HeatState>(6).fill('not_scheduled'),
-  todayState.value,
-]);
+const strip = computed<HeatState[]>(() =>
+  props.quest.last7.map((day, i, days) => (i === days.length - 1 ? todayState.value : day.status)),
+);
 const stripSummary = computed(() =>
   done.value ? 'Done today' : due.value ? 'Today pending' : 'Not due today',
 );
