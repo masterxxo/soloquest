@@ -169,7 +169,29 @@ packages/eslint-config Shared flat config + the language rule
     checkbox gesture with no request of their own; the backend cascade is untouched). The XP
     counter still rolls **once** for the summed total (`granted` applies the post-cascade
     `result.player`), and the exit start is pushed out so it still lands ~500ms after the last
-    child settles. **Reward moments** (level up = 4c-1; rank up = 4c-2) are a reusable
+    child settles. The **ritual (recurring) complete is the same checkbox gesture, a different
+    reaction** (step 4b, second beat): a ritual is repeatable, so on completion it **STAYS on its
+    card** — no slide-out, no placeholder; the **streak reacts** instead. `RecurringQuestCard`
+    reuses the quest-row choreography by composing the SAME `dl-check-*` tokens (flash lime →
+    settle violet → draw), never a re-declared gesture, then runs two ritual-only beats: the TODAY
+    pip in the `last7` strip fills pending→done (~200ms — a HeatCell background/border colour
+    transition, the ONE place a HeatCell ever changes state at runtime; the heatmap's cells are
+    static so it never animates there), and the CURRENT STREAK numeral ticks up by one with a short
+    violet bump (`dl-streak-bump`, ~420ms). All three are **optimistic and frontend-owned** — the
+    numeral freezes at its pre-click value and increments exactly at the bump so it can't drift from
+    request timing; a failed/handled-error request reverts checkbox+pip+streak (error toast), a 409
+    reconciles to the server's "done today". Because a ritual's done state PERSISTS, its resting
+    check uses **`dl-check-settled`** (drawn mark, no settle keyframe) so it never replays the lime
+    flash on reload. The flat `RECURRING_XP_REWARD` is NOT surfaced on the card (only the streak is);
+    the top telemetry XP bar still rolls via the player store as for a quest. **Backfill** (a
+    due-but-missed past day, from the detail heatmap) keeps reward parity but NOT presentation — it
+    fills the PAST pip and recomputes the streak with no today-celebration and no bump (design K3,
+    "reward parity, presentation asymmetry"), and a milestone it crosses is announced through the
+    NEUTRAL notice channel (`showInfo` — one INFO per backfill, mentioning the restored streak),
+    never the gold achievement toast. That split is by **path** (`onBackfill` vs the live
+    `onComplete`, in `useRecurringQuestActions`), NOT by any property of the achievement — the
+    live-complete path keeps its gold toast. Under `reduced`, all three beats degrade to their
+    instant final state. **Reward moments** (level up = 4c-1; rank up = 4c-2) are a reusable
     **`RewardPanel`** overlay — NOT a toast — rendered at the app root over the still-live list
     (`pointer-events-none` overlay, `pointer-events-auto` panel; an outside `pointerdown` closes
     it without consuming the event, Escape closes via the modal stack, and it self-hides after
