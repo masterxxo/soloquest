@@ -21,7 +21,9 @@ import {
   wasRequiredOn,
   calendarWindowStart,
   buildRecurringCalendar,
+  buildRecentHistory,
 } from '../lib/recurrence';
+import { MS_PER_DAY } from '../lib/constants';
 import { getUserTimezone } from '../lib/user-settings';
 import { findOwnedRecurringQuest } from '../lib/recurring-quests';
 import { completeRecurringQuestForDate } from '../lib/recurring-completion';
@@ -41,33 +43,47 @@ const BACKFILL_ERROR: Record<string, { message: string; status: 400 | 409 }> = {
 // can later be bumped to a full year (e.g. 52) in one place.
 const CALENDAR_WEEKS = 18;
 
+// How many days of history each list row carries (the card's "pip strip"): today plus the
+// six preceding days, in the user's timezone.
+const HISTORY_DAYS = 7;
+
 // Chained so Hono RPC can infer the route types end-to-end.
 export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
   .use('*', requireAuth)
 
-  // List the user's active recurring quests, each with its streak plus two derived
-  // flags for today (in the user's timezone): isDueToday and isCompletedToday.
+  // List the user's active recurring quests, each with its streak, the two derived
+  // flags for today (in the user's timezone) — isDueToday, isCompletedToday — and a
+  // fixed HISTORY_DAYS-day "pip strip" (last7) of per-day status for the card.
   .get('/', async (c) => {
     const userId = c.get('user')!.id;
     const timezone = await getUserTimezone(db, userId);
     const today = getUserDate(new Date(), timezone);
     const todayStr = toDateString(today);
+    // Oldest day of the pip strip; also the lower bound of the completions we load. One
+    // widened query (>= this day) feeds both last7 and isCompletedToday — no N+1.
+    const historyStart = new Date(today.getTime() - (HISTORY_DAYS - 1) * MS_PER_DAY);
+    const historyStartStr = toDateString(historyStart);
 
     const rows = await db.query.recurringQuests.findMany({
       where: and(eq(recurringQuests.userId, userId), eq(recurringQuests.isActive, true)),
       orderBy: desc(recurringQuests.createdAt),
       with: {
         streak: true,
-        // Only today's completion is needed to derive isCompletedToday.
-        completions: { where: eq(recurringQuestCompletions.completedDate, todayStr) },
+        // The last HISTORY_DAYS days of completions — enough for both last7 and today.
+        completions: { where: gte(recurringQuestCompletions.completedDate, historyStartStr) },
       },
     });
 
-    const result = rows.map(({ completions, ...quest }) => ({
-      ...quest,
-      isDueToday: wasRequiredOn(quest, today),
-      isCompletedToday: completions.length > 0,
-    }));
+    const result = rows.map(({ completions, ...quest }) => {
+      const completedDates = new Set(completions.map((row) => row.completedDate));
+      const questStart = getUserDate(quest.createdAt, timezone);
+      return {
+        ...quest,
+        isDueToday: wasRequiredOn(quest, today),
+        isCompletedToday: completedDates.has(todayStr),
+        last7: buildRecentHistory(quest, today, HISTORY_DAYS, questStart, completedDates),
+      };
+    });
 
     return c.json(result);
   })

@@ -235,3 +235,35 @@ export function buildRecurringCalendar(
   }
   return days;
 }
+
+/**
+ * A fixed-width recent-history strip for the ritual list's "pip strip": exactly `days`
+ * calendar days, oldest → today, each in the user's timezone (both `today` and `questStart`
+ * are UTC midnight of the user's local day — see getUserDate). The status of each day uses
+ * the *same* rule as the heatmap: it delegates to buildRecurringCalendar unchanged, so the
+ * strip and the heatmap can never drift.
+ *
+ * The window is [today − (days − 1), today]. Days before the ritual existed are left-padded
+ * as not_scheduled (a day before creation was never scheduled), because buildRecurringCalendar
+ * only runs from the quest's start onward — it has no notion of "before I existed", and for a
+ * daily/weekdays rule wasRequiredOn would otherwise mark those pre-creation days as missed.
+ */
+export function buildRecentHistory(
+  quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
+  today: Date,
+  days: number,
+  questStart: Date,
+  completedDates: Set<string>,
+): RecurringCalendarDay[] {
+  const windowStart = new Date(today.getTime() - (days - 1) * MS_PER_DAY);
+  // Clamp the "real" (schedule-aware) portion to the day the ritual started.
+  const effectiveStart =
+    windowStart.getTime() > questStart.getTime() ? windowStart : questStart;
+
+  const preCreation: RecurringCalendarDay[] = [];
+  for (let t = windowStart.getTime(); t < effectiveStart.getTime(); t += MS_PER_DAY) {
+    preCreation.push({ date: toDateString(new Date(t)), status: 'not_scheduled' });
+  }
+
+  return preCreation.concat(buildRecurringCalendar(quest, effectiveStart, today, completedDates));
+}

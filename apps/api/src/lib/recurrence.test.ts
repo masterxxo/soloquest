@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildRecentHistory,
   getUserDate,
   isCompletableDate,
   isWithinBackfillWindow,
@@ -74,5 +75,103 @@ describe('isWithinBackfillWindow', () => {
   it('crosses a month boundary by date arithmetic, not string math', () => {
     expect(isWithinBackfillWindow('2026-06-28', '2026-07-03', 7)).toBe(true);
     expect(isWithinBackfillWindow('2026-06-25', '2026-07-03', 7)).toBe(false);
+  });
+});
+
+describe('buildRecentHistory', () => {
+  // A UTC-midnight day, exactly as getUserDate hands one back to the route.
+  const day = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+  const DAYS = 7;
+  // The 7-day window ending 2026-07-15 (oldest → today):
+  //   07-09 Thu, 07-10 Fri, 07-11 Sat, 07-12 Sun, 07-13 Mon, 07-14 Tue, 07-15 Wed.
+  const today = day('2026-07-15');
+  const statusOn = (strip: { date: string; status: string }[], date: string) =>
+    strip.find((d) => d.date === date)!.status;
+
+  it('returns exactly DAYS entries, oldest → today, and no future day', () => {
+    const quest = { recurrenceType: 'daily', recurrenceValue: null, createdAt: day('2026-01-01') };
+    const strip = buildRecentHistory(quest, today, DAYS, day('2026-01-01'), new Set());
+
+    expect(strip).toHaveLength(DAYS);
+    expect(strip.map((d) => d.date)).toEqual([
+      '2026-07-09',
+      '2026-07-10',
+      '2026-07-11',
+      '2026-07-12',
+      '2026-07-13',
+      '2026-07-14',
+      '2026-07-15',
+    ]);
+    expect(strip.at(-1)!.date).toBe(toDateString(today));
+  });
+
+  it('daily: every closed day is required — done vs missed, today still in progress', () => {
+    const quest = { recurrenceType: 'daily', recurrenceValue: null, createdAt: day('2026-01-01') };
+    // One completion mid-window (a backdated day shows as done), nothing today.
+    const strip = buildRecentHistory(quest, today, DAYS, day('2026-01-01'), new Set(['2026-07-12']));
+
+    expect(statusOn(strip, '2026-07-12')).toBe('done'); // completed → done
+    expect(statusOn(strip, '2026-07-09')).toBe('missed'); // required, closed, uncompleted
+    expect(statusOn(strip, '2026-07-14')).toBe('missed');
+    // Today is required but not yet done → neutral (in progress), never missed.
+    expect(statusOn(strip, '2026-07-15')).toBe('not_scheduled');
+  });
+
+  it('daily: a completed today reads as done', () => {
+    const quest = { recurrenceType: 'daily', recurrenceValue: null, createdAt: day('2026-01-01') };
+    const strip = buildRecentHistory(quest, today, DAYS, day('2026-01-01'), new Set(['2026-07-15']));
+    expect(statusOn(strip, '2026-07-15')).toBe('done');
+  });
+
+  it('every_x_days: only days a multiple of the interval from the start are required', () => {
+    // Interval 2 from 2026-07-09 → required on 07-09, 07-11, 07-13, 07-15.
+    const start = day('2026-07-09');
+    const quest = { recurrenceType: 'every_x_days', recurrenceValue: 2, createdAt: start };
+    const strip = buildRecentHistory(quest, today, DAYS, start, new Set(['2026-07-11']));
+
+    expect(statusOn(strip, '2026-07-11')).toBe('done');
+    expect(statusOn(strip, '2026-07-09')).toBe('missed'); // required, closed, uncompleted
+    expect(statusOn(strip, '2026-07-13')).toBe('missed');
+    expect(statusOn(strip, '2026-07-10')).toBe('not_scheduled'); // off day
+    expect(statusOn(strip, '2026-07-12')).toBe('not_scheduled');
+    expect(statusOn(strip, '2026-07-15')).toBe('not_scheduled'); // required today, in progress
+  });
+
+  it('weekdays: honors the Mon-indexed bitmask (bit 0 = Mon … 6 = Sun)', () => {
+    // Mon–Fri = bits 0..4 set = 0b0011111 = 31. Sat/Sun are off days.
+    const quest = { recurrenceType: 'weekdays', recurrenceValue: 31, createdAt: day('2026-01-01') };
+    const strip = buildRecentHistory(quest, today, DAYS, day('2026-01-01'), new Set());
+
+    expect(statusOn(strip, '2026-07-11')).toBe('not_scheduled'); // Sat, off
+    expect(statusOn(strip, '2026-07-12')).toBe('not_scheduled'); // Sun, off
+    expect(statusOn(strip, '2026-07-09')).toBe('missed'); // Thu, required, closed
+    expect(statusOn(strip, '2026-07-13')).toBe('missed'); // Mon, required, closed
+    expect(statusOn(strip, '2026-07-15')).toBe('not_scheduled'); // Wed, required today, in progress
+  });
+
+  it('a ritual created mid-window: days before it existed are not_scheduled', () => {
+    // Daily ritual that only started on 2026-07-13 — the earlier four days never existed.
+    const start = day('2026-07-13');
+    const quest = { recurrenceType: 'daily', recurrenceValue: null, createdAt: start };
+    const strip = buildRecentHistory(quest, today, DAYS, start, new Set(['2026-07-14']));
+
+    expect(strip).toHaveLength(DAYS);
+    expect(statusOn(strip, '2026-07-09')).toBe('not_scheduled'); // before creation
+    expect(statusOn(strip, '2026-07-12')).toBe('not_scheduled'); // before creation
+    expect(statusOn(strip, '2026-07-13')).toBe('missed'); // required, closed, uncompleted
+    expect(statusOn(strip, '2026-07-14')).toBe('done'); // completed
+    expect(statusOn(strip, '2026-07-15')).toBe('not_scheduled'); // today, in progress
+  });
+
+  it('resolves "today" (and the window) in the user timezone, not UTC', () => {
+    // 2026-07-16 02:30 UTC is still 2026-07-15 22:30 in New York — so the user's "today",
+    // and thus the last pip, is 07-15, and the window ends there (not 07-16).
+    const tz = 'America/New_York';
+    const userToday = getUserDate(new Date('2026-07-16T02:30:00Z'), tz);
+    const quest = { recurrenceType: 'daily', recurrenceValue: null, createdAt: day('2026-01-01') };
+    const strip = buildRecentHistory(quest, userToday, DAYS, day('2026-01-01'), new Set());
+
+    expect(strip.at(-1)!.date).toBe('2026-07-15');
+    expect(strip[0]!.date).toBe('2026-07-09');
   });
 });
