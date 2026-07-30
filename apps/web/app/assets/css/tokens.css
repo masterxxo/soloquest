@@ -125,6 +125,33 @@
   }
 }
 
+/* Ritual complete (step 4b, second beat) — a recurring quest reuses the SAME flash→settle→draw
+   checkbox gesture as the quest row (`.dl-check-on` above), but a ritual STAYS on its card once
+   done: it never slides out, the streak reacts instead. Two ritual-only helpers:
+   • `.dl-check-settled` — the RESTING done check: the drawn checkmark shown statically, no settle
+     keyframe, so an already-done ritual doesn't replay the lime flash on every page load.
+   • `.dl-streak-bump` — the ritual's one numeric reward: on completion the CURRENT STREAK numeral
+     ticks up by one with a short lift + violet colour pulse (~200ms), then settles back to ink.
+   The reduced-motion guard below collapses both to their final state (settled check, new number). */
+.dl-check-settled .dl-check-mark {
+  stroke-dashoffset: 0;
+}
+@keyframes dl-streak-bump {
+  0% {
+    transform: none;
+  }
+  45% {
+    transform: translateY(-6px) scale(1.15);
+    color: var(--dl-violet);
+  }
+  100% {
+    transform: none;
+  }
+}
+.dl-streak-bump {
+  animation: dl-streak-bump 200ms var(--dl-ease);
+}
+
 /* Title strike — a line drawn left→right via `::after` (width 0→100%, 380ms after a 260ms delay),
    and the text dimming to muted (280ms delay), both trailing the checkbox so the beats sequence. */
 .dl-strike {

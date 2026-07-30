@@ -28,7 +28,7 @@ const BASE: Record<HeatState, string> = {
 
 <template>
   <span
-    class="relative inline-block shrink-0 rounded-[2px]"
+    class="relative inline-block shrink-0 rounded-[2px] transition-[background-color,border-color] duration-dl-panel ease-dl"
     :class="BASE[props.state]"
     :style="{ width: `${size}px`, height: `${size}px` }"
   >

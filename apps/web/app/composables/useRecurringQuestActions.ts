@@ -112,7 +112,21 @@ export function useRecurringQuestActions(
 
       const result = await res.json();
       await handlers.backfilled?.(result);
-      if (result.newAchievements.length > 0) handlers.achievementsEarned(result.newAchievements);
+      // K3 — "reward parity, presentation asymmetry". A backfill that crosses a streak milestone
+      // still EARNS it (the backend awarded it just the same), but the gold celebration belongs to
+      // the day the event happened, not to a past day filled after the fact. So the milestone is
+      // announced through the NEUTRAL notice channel (showInfo → paper + violet bar), never the
+      // gold `showAchievements`. The split is by PATH — this is the backfill call — not by any
+      // property of the achievement; the live-complete path (onComplete) keeps the gold toast.
+      // One notice per backfill: if the same fill both repairs the streak and hits a milestone, it
+      // is a single INFO, not an INFO plus a separate achievement toast.
+      if (result.newAchievements.length > 0) {
+        const n = result.newAchievements.length;
+        feedback.showInfo(
+          `Day backfilled — streak restored to ${result.streak.currentStreak}, ` +
+            `${n === 1 ? 'milestone' : 'milestones'} reached.`,
+        );
+      }
     } finally {
       backfillingDate.value = null;
       quests.endComplete('recurring', quest.id);
