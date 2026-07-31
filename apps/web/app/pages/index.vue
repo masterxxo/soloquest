@@ -4,6 +4,7 @@ import type { Quest, QuestWithWarnings, CompleteResult } from '~/lib/api-client'
 import { useQuestsStore } from '~/stores/quests';
 import { usePlayerStore } from '~/stores/player';
 import { useEntityModals } from '~/composables/useEntityModals';
+import { useModalOrigin, type ModalOrigin } from '~/composables/useModalOrigin';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useQuestFilters } from '~/composables/useQuestFilters';
 import { useReducedMotion } from '~/composables/useReducedMotion';
@@ -11,7 +12,7 @@ import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
 const player = usePlayerStore();
-const { activeQuests } = storeToRefs(quests);
+const { activeQuests, doneTodayQuests } = storeToRefs(quests);
 
 // Counts/lists come from the shared store; the layout already loaded them, but calling
 // load() here too makes the page safe to hit directly (it self-guards re-fetches).
@@ -40,6 +41,22 @@ const {
   openEdit: openEditQuest,
   closeEdit,
 } = useEntityModals<Quest>();
+
+// ── DONE TODAY: read-only preview ─────────────────────────────────────────────────
+// A completed quest opens a preview, not the detail-with-actions modal — no complete/edit/
+// delete, no un-complete. It reads the live entity the store kept when the row was completed
+// (full tags/sub-tasks/description), so it's a standalone modal rather than part of the
+// create/detail/edit machinery in useEntityModals.
+const { originFrom } = useModalOrigin();
+const doneQuest = ref<Quest | null>(null);
+const doneOrigin = ref<ModalOrigin>(null);
+function openDoneQuest(quest: Quest, event?: MouseEvent) {
+  doneOrigin.value = originFrom(event);
+  doneQuest.value = quest;
+}
+function closeDoneQuest() {
+  doneQuest.value = null;
+}
 
 function onCreated(result: QuestWithWarnings) {
   quests.addQuest(result);
@@ -99,7 +116,13 @@ useKeyboardShortcuts([
     key: 'q',
     description: 'New quest',
     handler: (event) => {
-      if (showCreate.value || selectedQuest.value != null || editingQuest.value != null) return;
+      if (
+        showCreate.value ||
+        selectedQuest.value != null ||
+        editingQuest.value != null ||
+        doneQuest.value != null
+      )
+        return;
       event.preventDefault();
       openCreate();
     },
@@ -229,9 +252,10 @@ const questGroups = computed<QuestGroup[]>(() => {
         </div>
       </section>
 
-      <!-- First run: no quests at all. -->
+      <!-- First run: no quests at all. Suppressed when the day's completions are on show —
+           a board that's empty only because everything's done isn't "empty". -->
       <div
-        v-if="!baseQuests.length"
+        v-if="!baseQuests.length && !doneTodayQuests.length"
         class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
       >
         <span class="corner-cut-sm grid h-12 w-12 place-items-center bg-dl-violet-wash text-dl-violet" aria-hidden="true">◆</span>
@@ -246,9 +270,11 @@ const questGroups = computed<QuestGroup[]>(() => {
         </button>
       </div>
 
-      <!-- Quests exist, but every one is filtered out — say so and offer the way out. -->
+      <!-- Active quests exist, but every one is filtered out — say so and offer the way out.
+           Requires baseQuests so an all-done board (no active quests) doesn't read as
+           "nothing matches your filters". -->
       <div
-        v-else-if="!questGroups.length"
+        v-else-if="baseQuests.length && !questGroups.length"
         class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
       >
         <span class="corner-cut-sm grid h-12 w-12 place-items-center bg-dl-sunk text-dl-ink-faint" aria-hidden="true">+</span>
@@ -262,6 +288,26 @@ const questGroups = computed<QuestGroup[]>(() => {
           Clear filters
         </button>
       </div>
+
+      <!-- DONE TODAY: the day's completed top-level quests, suppressed and pinned to the bottom.
+           Hidden when empty (no bare heading). A completed row leaves the active list via its
+           own slide-out (4a, unchanged) and then re-appears here — the two are decoupled, no
+           FLIP across the board. Rows are read-only: the title opens a preview, nothing more. -->
+      <section v-if="doneTodayQuests.length" class="flex flex-col gap-1.5">
+        <div class="flex items-center gap-2 border-b border-dl-band-line pb-1">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-lime">DONE TODAY</span>
+          <span class="font-dl-mono text-dl-label text-dl-ink-faint">{{ doneTodayQuests.length }}</span>
+        </div>
+        <div class="flex flex-col gap-1">
+          <DoneQuestRow
+            v-for="(q, i) in doneTodayQuests"
+            :key="q.id"
+            :quest="q"
+            :style="staggerStyle(i)"
+            @open="openDoneQuest"
+          />
+        </div>
+      </section>
     </div>
 
     <!-- New-quest form modal. -->
@@ -288,6 +334,18 @@ const questGroups = computed<QuestGroup[]>(() => {
         @deleted="onDetailDeleted"
         @edit="openEditQuest"
       />
+    </DlModal>
+
+    <!-- Read-only preview of a completed quest (from DONE TODAY). Same DlModal chrome as the
+         detail — bottom sheet on mobile — but QuestDetail in `readonly` mode: no actions. -->
+    <DlModal
+      v-if="doneQuest"
+      title="Completed quest"
+      :origin="doneOrigin"
+      :max-width="720"
+      @close="closeDoneQuest"
+    >
+      <QuestDetail :quest="doneQuest" readonly />
     </DlModal>
 
     <!-- Edit-quest modal — stacks above the detail modal when it's open. -->

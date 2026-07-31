@@ -44,6 +44,11 @@ export const questListQuerySchema = z.object({
   parentId: z.union([z.string().uuid(), z.literal("null")]).optional(),
   // include=subTasks attaches each quest's sub-tasks to the response rows.
   include: z.literal("subTasks").optional(),
+  // includeDoneToday=true also appends the day's completed TOP-LEVEL quests (the board's
+  // "DONE TODAY" strip), computed in the user's timezone, alongside the active rows in the
+  // same array. They carry status 'completed', so the client splits them out. Omitted → the
+  // response is unchanged (active rows only), so existing callers are unaffected.
+  includeDoneToday: z.literal("true").optional(),
 });
 
 // Tag create. `name` is trimmed by Zod (so " Dom " → "Dom") and must be non-empty after

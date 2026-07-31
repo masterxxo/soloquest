@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { db } from '@soloquest/db/client';
 import { quests } from '@soloquest/db/schema';
 import {
@@ -22,6 +22,8 @@ import {
   getCompletionLog,
 } from '../lib/quest-completions';
 import { getUserTimezone } from '../lib/user-settings';
+import { getUserDate, toDateString } from '../lib/recurrence';
+import { MS_PER_DAY } from '../lib/constants';
 import { effectiveParentId, rankWarnings } from '../lib/rank';
 import { zValidator } from '../lib/validate';
 
@@ -62,6 +64,37 @@ function shapeQuestRow(row: QuestRowWithTags) {
   };
 }
 
+// The board's "DONE TODAY" strip: the current user's TOP-LEVEL quests completed *today* in
+// their own timezone, each with tags and sub-tasks, most-recent first. Top-level only, so a
+// sub-task completed on its own stays nested under its still-active parent — never a stray
+// row here (mirrors the list's top-level grouping). A coarse 2-day instant bound keeps the
+// scan off the whole completion history; the exact local calendar day is then applied
+// per-row, since a raw timestamp range can't name a tz-local day without the offset.
+async function loadDoneToday(userId: string) {
+  const timezone = await getUserTimezone(db, userId);
+  const now = new Date();
+  const todayStr = toDateString(getUserDate(now, timezone));
+  const since = new Date(now.getTime() - 2 * MS_PER_DAY);
+  const rows = (await db.query.quests.findMany({
+    where: and(
+      eq(quests.userId, userId),
+      isNull(quests.parentId),
+      eq(quests.status, 'completed'),
+      gte(quests.completedAt, since),
+    ),
+    orderBy: desc(quests.completedAt),
+    with: {
+      questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } },
+      subTasks: {
+        with: { questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } } },
+      },
+    },
+  })) as unknown as QuestRowWithTags[];
+  return rows
+    .filter((r) => r.completedAt && toDateString(getUserDate(r.completedAt, timezone)) === todayStr)
+    .map(shapeQuestRow);
+}
+
 // Chained so Hono RPC can infer the route types end-to-end.
 export const questsRouter = new Hono<{ Variables: Variables }>()
   .use('*', requireAuth)
@@ -71,7 +104,7 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
   // nests each quest's sub-tasks under it.
   .get('/', zValidator('query', questListQuerySchema), async (c) => {
     const userId = c.get('user')!.id;
-    const { status, parentId, include } = c.req.valid('query');
+    const { status, parentId, include, includeDoneToday } = c.req.valid('query');
 
     const conditions = [eq(quests.userId, userId)];
     if (status) conditions.push(eq(quests.status, status));
@@ -94,7 +127,12 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
           : {}),
       },
     })) as unknown as QuestRowWithTags[];
-    return c.json(rows.map(shapeQuestRow));
+
+    const shaped = rows.map(shapeQuestRow);
+    // Opt-in: the board asks for the day's completed top-level quests in the same round-trip.
+    // They ride along in the same array (status 'completed'); the client splits them out.
+    if (includeDoneToday) shaped.push(...(await loadDoneToday(userId)));
+    return c.json(shaped);
   })
 
   // Lifetime quest counters for the current user, read from the completion log rather
@@ -126,6 +164,27 @@ export const questsRouter = new Hono<{ Variables: Variables }>()
     const timezone = await getUserTimezone(db, userId);
     const page = await getCompletionLog(db, userId, timezone, limit, cursor);
     return c.json(page);
+  })
+
+  // A single quest by id, scoped to the owner, with tags and sub-tasks — same shape as a list
+  // row. Read-only and status-agnostic (returns completed quests too), so the Chronicles
+  // preview can fetch the still-living entity behind a completion-log snapshot. 404 → the quest
+  // is gone (or never the caller's), the caller's cue to fall back to the snapshot. Registered
+  // after the static GETs (/stats, /completions*) so those win the match, never this param.
+  .get('/:id', zValidator('param', questIdParamSchema), async (c) => {
+    const userId = c.get('user')!.id;
+    const { id } = c.req.valid('param');
+    const row = (await db.query.quests.findFirst({
+      where: and(eq(quests.id, id), eq(quests.userId, userId)),
+      with: {
+        questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } },
+        subTasks: {
+          with: { questTags: { with: { tag: { columns: { id: true, name: true, color: true } } } } },
+        },
+      },
+    })) as unknown as QuestRowWithTags | undefined;
+    if (!row) return c.json({ error: 'Quest not found' }, 404);
+    return c.json(shapeQuestRow(row));
   })
 
   // Create a quest. xpReward is derived server-side from difficulty; status defaults

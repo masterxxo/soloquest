@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { DIFFICULTY_ORDER } from '@soloquest/shared';
-import { client, type CompletionSummary, type CompletionLogEntry } from '~/lib/api-client';
+import { client, type CompletionSummary, type CompletionLogEntry, type Quest } from '~/lib/api-client';
+import { useModalOrigin, type ModalOrigin } from '~/composables/useModalOrigin';
 import { groupByCompletionDate } from '~/lib/date';
 
 // NOTE: "Chronicles" is purely the UI name for the quest-completion history. The API, DB
@@ -52,6 +53,86 @@ const rankBreakdown = computed(() => {
 
 const groups = computed(() => groupByCompletionDate(entries.value));
 const isEmpty = computed(() => !pending.value && !error.value && entries.value.length === 0);
+
+// ── Read-only preview (click a log row) ─────────────────────────────────────────────
+// Fetch-on-click, never eager — the log is keyset-paginated and can run to hundreds of rows.
+// A click tries to resolve the LIVE quest and shows the full read-only QuestDetail; when the
+// quest is gone (questId null, or the fetch 404s) it degrades to the completion snapshot the
+// row already carries. So no row is ever a dead click.
+const { originFrom } = useModalOrigin();
+const previewOpen = ref(false);
+const previewLoading = ref(false);
+const previewQuest = ref<Quest | null>(null);
+const previewDeleted = ref(false);
+const previewOrigin = ref<ModalOrigin>(null);
+// Guards against out-of-order resolves: a newer click bumps this, and a stale fetch that
+// finishes late sees the id has moved on and bows out.
+let previewReq = 0;
+
+// Build a QuestDetail-shaped object from a completion snapshot. Only title/rank/xp/completedAt
+// are real; the rest are inert placeholders the `deleted` variant never renders (it hides
+// description/tags/priority/sub-tasks/deadline/created). Status 'completed' so the header still
+// shows the "Completed <date>" signal, which the snapshot genuinely backs.
+function snapshotToQuest(entry: CompletionLogEntry): Quest {
+  return {
+    id: entry.questId ?? entry.id,
+    userId: '',
+    parentId: null,
+    title: entry.title,
+    description: null,
+    difficulty: entry.difficulty,
+    status: 'completed',
+    priority: 'normal',
+    xpReward: entry.xpAwarded,
+    deadline: null,
+    completedAt: entry.completedAt,
+    createdAt: entry.completedAt,
+    tags: [],
+    subTasks: [],
+  } as unknown as Quest;
+}
+
+function showSnapshot(entry: CompletionLogEntry) {
+  previewQuest.value = snapshotToQuest(entry);
+  previewDeleted.value = true;
+  previewLoading.value = false;
+}
+
+async function openEntry(entry: CompletionLogEntry, event: MouseEvent) {
+  const req = ++previewReq;
+  previewOrigin.value = originFrom(event);
+  previewOpen.value = true;
+
+  // Deleted quest (SET NULL) → straight to the snapshot, no fetch.
+  if (!entry.questId) {
+    showSnapshot(entry);
+    return;
+  }
+
+  // Live quest may still exist → fetch it once, on this click.
+  previewLoading.value = true;
+  previewQuest.value = null;
+  previewDeleted.value = false;
+  try {
+    const res = await client.api.quests[':id'].$get({ param: { id: entry.questId } });
+    if (req !== previewReq) return; // a newer click superseded this one
+    if (res.ok) {
+      previewQuest.value = (await res.json()) as Quest;
+      previewDeleted.value = false;
+      previewLoading.value = false;
+    } else {
+      // 404 (deleted between render and click) or any other failure → snapshot fallback.
+      showSnapshot(entry);
+    }
+  } catch {
+    if (req !== previewReq) return;
+    showSnapshot(entry);
+  }
+}
+
+function closePreview() {
+  previewOpen.value = false;
+}
 </script>
 
 <template>
@@ -113,7 +194,7 @@ const isEmpty = computed(() => !pending.value && !error.value && entries.value.l
         <section v-for="group in groups" :key="group.key" class="flex flex-col gap-1.5">
           <div class="border-b border-dl-band-line pb-1 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">{{ group.label }}</div>
           <div class="flex flex-col gap-1">
-            <ChronicleEntry v-for="entry in group.items" :key="entry.id" :entry="entry" />
+            <ChronicleEntry v-for="entry in group.items" :key="entry.id" :entry="entry" @open="openEntry" />
           </div>
         </section>
 
@@ -126,5 +207,19 @@ const isEmpty = computed(() => !pending.value && !error.value && entries.value.l
         >{{ loadingMore ? 'Loading…' : 'Load 30 older' }}</button>
       </div>
     </template>
+
+    <!-- Read-only preview of a completed quest — the live entity if it still exists, otherwise
+         the degraded snapshot. Same DlModal chrome as elsewhere (bottom sheet on mobile,
+         Escape/backdrop via modalStack). Title reflects which variant is shown. -->
+    <DlModal
+      v-if="previewOpen"
+      :title="previewDeleted ? 'Deleted quest' : 'Completed quest'"
+      :origin="previewOrigin"
+      :max-width="720"
+      @close="closePreview"
+    >
+      <p v-if="previewLoading" class="m-0 text-dl-body text-dl-ink-muted">Loading…</p>
+      <QuestDetail v-else-if="previewQuest" :quest="previewQuest" readonly :deleted="previewDeleted" />
+    </DlModal>
   </div>
 </template>
