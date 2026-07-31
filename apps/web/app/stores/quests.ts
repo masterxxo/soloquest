@@ -25,6 +25,12 @@ export type CompletableKind = 'quest' | 'recurring';
 
 interface QuestsState {
   activeQuests: Quest[];
+  // Top-level quests completed *today* in the user's timezone — the board's "DONE TODAY"
+  // strip. Seeded from the list load (server-filtered to today) and appended to live as
+  // quests complete, so it needs no refetch; naturally empties tomorrow (a fresh load past
+  // midnight refetches and the old completions no longer match today). Read-only surface:
+  // its rows open a preview, never a mutation. See the DONE TODAY section on the Quests page.
+  doneTodayQuests: Quest[];
   recurringQuests: RecurringQuestWithStreak[];
   loaded: boolean;
   // Local calendar day the lists were last fetched on (YYYY-MM-DD). The server-computed
@@ -41,6 +47,7 @@ interface QuestsState {
 export const useQuestsStore = defineStore('quests', {
   state: (): QuestsState => ({
     activeQuests: [],
+    doneTodayQuests: [],
     recurringQuests: [],
     loaded: false,
     loadedDate: null,
@@ -80,7 +87,7 @@ export const useQuestsStore = defineStore('quests', {
       if (this.loaded && this.loadedDate === today) return;
       const [quests, recurring] = await Promise.all([
         client.api.quests
-          .$get({ query: { status: 'active', include: 'subTasks' } })
+          .$get({ query: { status: 'active', include: 'subTasks', includeDoneToday: 'true' } })
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => []),
         client.api['recurring-quests']
@@ -88,7 +95,11 @@ export const useQuestsStore = defineStore('quests', {
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => []),
       ]);
-      this.activeQuests = quests as Quest[];
+      // The list carries the active rows plus (via includeDoneToday) the day's completed
+      // top-level quests; split on status so each drives its own section.
+      const all = quests as Quest[];
+      this.activeQuests = all.filter((q) => q.status === 'active');
+      this.doneTodayQuests = all.filter((q) => q.status === 'completed');
       this.recurringQuests = recurring as RecurringQuestWithStreak[];
       this.loaded = true;
       this.loadedDate = today;
@@ -136,6 +147,29 @@ export const useQuestsStore = defineStore('quests', {
       // quest rows and their tag pins in the DB — it only drops them from the *active* list
       // client-side — so usageCount (all quests, any status) is unchanged. Deliberate: see
       // the usageCount semantics note in stores/tags.ts.
+      //
+      // Before dropping it, snapshot the live entity into the DONE TODAY strip. The store
+      // already holds it in full (tags, sub-tasks, description, priority, deadline), so the
+      // read-only preview needs no refetch. Top-level only — a sub-task completed on its own
+      // stays nested under its still-active parent, matching the backend's doneToday query.
+      // Idempotent by construction: once dropped, a repeat call won't find it to re-add.
+      const live = this.activeQuests.find((q) => q.id === result.quest.id);
+      if (live && live.parentId == null) {
+        const completedAt = result.quest.completedAt ?? live.completedAt;
+        this.doneTodayQuests = [
+          {
+            ...live,
+            status: 'completed' as const,
+            completedAt,
+            // The cascade closed the active direct sub-tasks in the same transaction; reflect
+            // that so the preview shows them done, matching what the backend just stored.
+            subTasks: live.subTasks?.map((st) =>
+              st.status === 'active' ? { ...st, status: 'completed' as const, completedAt } : st,
+            ),
+          },
+          ...this.doneTodayQuests,
+        ];
+      }
       this.dropQuestFromLists(result.quest.id);
       const player = usePlayerStore();
       player.applyProgress(result.player);

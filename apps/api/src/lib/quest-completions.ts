@@ -269,6 +269,9 @@ export async function getCompletionSummary(
 /** One row of the completion log, snapshot-only (the quest itself may be long gone). */
 export interface CompletionLogEntry {
   id: string;
+  // null once the source quest was deleted (SET NULL); a uuid while it still lives. Lets the
+  // Chronicles preview choose between fetching the full entity and showing this snapshot.
+  questId: string | null;
   title: string;
   difficulty: Difficulty;
   xpAwarded: number;
@@ -326,6 +329,10 @@ export async function getCompletionLog(
   const rows = await database
     .select({
       id: questCompletions.id,
+      // The (nullable) link back to the live quest. NULL once the quest is deleted (SET NULL,
+      // never cascade) — the frontend reads it to decide whether to try fetching the full
+      // entity for a preview or fall back to this snapshot. Not the source of truth.
+      questId: questCompletions.questId,
       title: questCompletions.title,
       difficulty: questCompletions.difficulty,
       xpAwarded: questCompletions.xpAwarded,

@@ -242,6 +242,23 @@ All of the following exist, are used, and are meant to stay:
   are skipped (idempotent — no double XP, no duplicate log). The `/complete` response carries
   `cascadedCompletions: number`, and `leveledUp`/player state are computed after the whole
   cascade so a level-up reached only by the summed XP isn't lost.
+- **"DONE TODAY"** — a suppressed strip at the bottom of the Quests list showing the day's
+  completed **top-level** quests, in the user's timezone. The list GET takes
+  `includeDoneToday=true` and, in the *same* round-trip, appends those quests (status
+  `completed`, tags + sub-tasks) to the array; the quests store splits the response by status
+  into `activeQuests` / `doneTodayQuests`. No migration — the quest entity survives completion,
+  so this is a read filter on `completedAt` (a coarse 2-day instant bound, then the exact local
+  day per row via `getUserDate`). Backend top-level only (`parentId IS NULL`); a sub-task
+  completed on its own stays nested under its still-active parent. On a *live* complete the
+  store snapshots the full live entity into `doneTodayQuests` before dropping it, so the strip
+  needs no refetch and the read-only preview has full data. Rows render via `DoneQuestRow`
+  (static settled `dl-check-settled` checkbox, struck/dimmed title, faded tags/priority/rank);
+  the row leaves the active list with the **unchanged 4a slide-out** and then *re-appears* in
+  the strip (a fresh `dl-row-in` mount — deliberately decoupled, no FLIP across the board). The
+  title opens a **read-only** `QuestDetail` (`readonly` prop: no Complete/Edit/Delete, no
+  per-sub-task Edit; a "Completed <date>" header signal) in the same `DlModal` chrome (bottom
+  sheet on mobile). The strip empties naturally tomorrow (a post-midnight load no longer matches
+  today). **There is no un-complete / undo** — see the negative decisions.
 - A rank filter on the quest list (`useQuestFilters` + `QuestFilterBar`), entirely
   client-side over the already-loaded array — it narrows the deadline grouping, it never
   reaches the API. It is **additive**: the
@@ -283,7 +300,20 @@ All of the following exist, are used, and are meant to stay:
   derive each calendar day from `completedAt` in the user's timezone via `getUserDate`
   (never a UTC `date_trunc`), and `summary.totalCompleted` counts the same log rows as
   `/stats`, so the two can't diverge. Recurring quests keep their own streak/heatmap and are
-  deliberately not part of Chronicles.
+  deliberately not part of Chronicles. Each log row carries `questId` (**nullable** — `SET NULL`
+  when the quest is deleted, so a completion outlives its quest) and is **clickable → the same
+  read-only preview modal as DONE TODAY**. The preview is **fetch-on-click, never eager** (the
+  log is keyset-paginated and can run long): `questId` null → straight to a **degraded** modal
+  built from the snapshot (title/rank/xp/completedAt + an honest "this quest has been deleted"
+  note, no description/tags/priority/sub-tasks); `questId` present → `GET /api/quests/:id`, on
+  200 the **full** live entity, on 404 the same degraded fallback. So no row is a dead click.
+  The snapshot is deliberately NOT extended (still no tags/priority) — the degraded view is the
+  answer to that debt, not a reason to widen `quest_completions`.
+- **`GET /api/quests/:id`** — a read-only single-quest read (owner-scoped), returning the full
+  quest with tags + sub-tasks in the same shape as a list row, **status-agnostic** (completed
+  quests included) so the Chronicles preview can fetch a still-living completed quest; 404 when
+  it's gone. Registered after the static `/stats` and `/completions*` GETs so those win the
+  route match, never this param.
 - **Tags** — user-defined labels pinned to quests (many-to-many via `quest_tags`). A tag has
   a display `name` (as typed), a `normalizedName` (`trim().toLowerCase()`, via `normalizeTagName`
   in shared), and a `color`. A **UNIQUE(`userId`, `normalizedName`)** DB constraint is what makes
@@ -319,6 +349,11 @@ All of the following exist, are used, and are meant to stay:
 - **Campaigns are gone from every layer** and stay gone — that scope belongs to the future
   project-management app. Do not reintroduce them. (They survive only in old migration
   files, which are immutable history, not a hint.)
+- **Un-completing a quest (undo) is deliberately deferred, not built.** The "DONE TODAY" strip
+  and its preview are **read-only** — no undo, uncheck, or un-complete anywhere. Reversing a
+  completion touches XP, level and achievements (the app's spine), so it is a separate,
+  domain-confirmed decision. Do not add an undo affordance to `DoneQuestRow`, the read-only
+  `QuestDetail`, or the complete flow without that decision.
 - **"Rituals" is a UI label only** — and the boundary is exact, in both directions:
   - **`recurring` everywhere in domain, data and types.** `apps/api`, `packages/db`,
     `packages/shared`, every wire type crossing into the frontend (e.g.
