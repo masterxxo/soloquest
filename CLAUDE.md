@@ -224,8 +224,14 @@ packages/eslint-config Shared flat config + the language rule
     `useReducedMotion` like the RewardPanel: enter (slide from right + fade) / leave / move collapse
     to instant under `reduced`, and the progress bar stands full (the JS dismiss timer still fires);
     `aria-live` is polite for achievement/notice, assertive for error. The grimoire `LevelUpToast`,
-    `NoticeToast` and `AchievementToast` are all gone; `SmokeCanvas` survives only in the grimoire
-    `auth` layout and is deliberately kept.
+    `NoticeToast` and `AchievementToast` are all gone. The **auth screens (login / register) are
+    now Daylight too** — the `auth` layout speaks the shell language (1px grid-line frame, cut
+    corners, flat `dl-bg`, mono-caps technical marks, the brand "S" marker) minus the app chrome
+    that needs a signed-in player (no nav gutter, no telemetry bar); the pages drop one white form
+    panel into a centred construction area, reusing the canonical Daylight field / primary-button
+    idioms and the magenta-bar (never magenta-text) error strip. With that, the grimoire is gone
+    from every layer: `SmokeCanvas` is **no longer referenced anywhere** (the component file
+    survives, now orphaned).
 
 ---
 
