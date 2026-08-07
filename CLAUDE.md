@@ -226,6 +226,17 @@ packages/eslint-config Shared flat config + the language rule
     `aria-live` is polite for achievement/notice, assertive for error. The grimoire `LevelUpToast`,
     `NoticeToast` and `AchievementToast` are all gone; `SmokeCanvas` survives only in the grimoire
     `auth` layout and is deliberately kept.
+15. **Per-user list cache is SWR in Pinia + localStorage.** Quests, rituals and tags live in
+    Pinia (still the UI source of truth for those lists) and are snapshotted to
+    `localStorage` keyed by user id (`lib/list-cache.ts`). A hard refresh hydrates from the
+    snapshot so the board can paint before the network returns, then **always** revalidates.
+    While the session stays open, `useListCacheSync` (default layout) soft-refreshes on a
+    **5-minute TTL**, when the tab becomes visible again (2-minute max-age), and never clears
+    painted lists before the response lands. Soft refresh is skipped while a complete is
+    in flight. Midnight still invalidates via `loadedDate` (day-sensitive flags). Sign-out
+    clears the snapshot and resets the stores. Chronicles / stats / heatmaps stay
+    fetch-on-page — not part of this cache. Empty states must not flash during the first
+    fetch (`isInitialLoading`); "No quests yet" only after a settled empty load.
 
 ---
 

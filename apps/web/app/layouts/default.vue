@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { usePlayerStore } from '~/stores/player';
-import { useQuestsStore } from '~/stores/quests';
 import { useSignOut } from '~/composables/useSignOut';
+import { useListCacheSync } from '~/composables/useListCacheSync';
 import { useModalStackStore } from '~/stores/modalStack';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 
 const route = useRoute();
 const player = usePlayerStore();
-const quests = useQuestsStore();
 
 // Session stays the source of truth; the player store is a projection of session.user.
 // Hydration lives in the persistent layout so it survives page navigation.
 const { data: session } = await useAuthSession();
 watchEffect(() => player.hydrate(session.value?.user));
 
-// Load the shared per-user lists once (client-side; the store guards re-fetches).
-onMounted(() => { quests.load(); });
+// Quests + rituals + tags: localStorage hydrate, always revalidate on boot, then TTL /
+// visibility soft-refresh. Pages may still call store.load() — it is TTL-gated.
+const userId = computed(() => session.value?.user?.id);
+useListCacheSync(userId);
 
 // Lime tip at the XP bar's growing edge — flashes on each gain (increase only; a level-up
 // resets the in-level counter downward). Keyed so the one-shot animation replays every time.
