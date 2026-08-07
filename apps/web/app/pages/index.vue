@@ -12,10 +12,10 @@ import { bucketByDeadline, formatDate, localDateString } from '~/lib/date';
 
 const quests = useQuestsStore();
 const player = usePlayerStore();
-const { activeQuests, doneTodayQuests } = storeToRefs(quests);
+const { activeQuests, doneTodayQuests, isInitialLoading } = storeToRefs(quests);
 
-// Counts/lists come from the shared store; the layout already loaded them, but calling
-// load() here too makes the page safe to hit directly (it self-guards re-fetches).
+// Counts/lists come from the shared store; the layout boots + revalidates them. Calling
+// load() here too makes the page safe to hit directly (TTL-gated soft refresh).
 onMounted(() => { quests.load(); });
 
 // Quick-add owns its own POST (rich capture: rank + deadline + tags) and hands the created
@@ -252,10 +252,19 @@ const questGroups = computed<QuestGroup[]>(() => {
         </div>
       </section>
 
+      <!-- Waiting for the first network fetch with no localStorage snapshot yet. -->
+      <div
+        v-if="isInitialLoading"
+        class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
+        role="status"
+      >
+        <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Loading quests…</span>
+      </div>
+
       <!-- First run: no quests at all. Suppressed when the day's completions are on show —
            a board that's empty only because everything's done isn't "empty". -->
       <div
-        v-if="!baseQuests.length && !doneTodayQuests.length"
+        v-else-if="!baseQuests.length && !doneTodayQuests.length"
         class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
       >
         <span class="corner-cut-sm grid h-12 w-12 place-items-center bg-dl-violet-wash text-dl-violet" aria-hidden="true">◆</span>

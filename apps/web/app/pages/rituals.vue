@@ -15,7 +15,7 @@ import { useEntityModals } from '~/composables/useEntityModals';
 // types keep the `recurring` vocabulary untouched — this is presentation only.
 const quests = useQuestsStore();
 const feedback = useFeedbackStore();
-const { recurringQuests } = storeToRefs(quests);
+const { recurringQuests, isInitialLoading } = storeToRefs(quests);
 
 onMounted(() => { quests.load(); });
 
@@ -93,7 +93,15 @@ function onRitualEdited(quest: RecurringQuest) {
       >+ New ritual</button>
     </div>
 
-    <template v-if="recurringQuests.length">
+    <div
+      v-if="isInitialLoading"
+      class="corner-cut mx-auto flex max-w-md flex-col items-center gap-3 border border-dl-grid-line bg-dl-surface px-6 py-12 text-center"
+      role="status"
+    >
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Loading rituals…</span>
+    </div>
+
+    <template v-else-if="recurringQuests.length">
       <section v-for="group in groups" :key="group.key" class="flex flex-col gap-1.5">
         <div class="flex items-center gap-2 border-b border-dl-band-line pb-1">
           <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">{{ group.label }}</span>

@@ -12,15 +12,24 @@ import { usePlayerStore } from '~/stores/player';
 import { useFeedbackStore } from '~/stores/feedback';
 import { useTagsStore } from '~/stores/tags';
 import { localDateString } from '~/lib/date';
+import {
+  isCacheFresh,
+  LIST_CACHE_TTL_MS,
+  readQuestsListCache,
+  writeQuestsListCache,
+} from '~/lib/list-cache';
 import type { TagColor } from '@soloquest/shared';
 
 // Single client-side cache for the per-user lists. It outlives individual pages (the
-// persistent grimoire layout + several routes all read the same arrays), and applies
-// the server-authoritative results of mutations straight from their responses.
+// persistent layout + several routes all read the same arrays), applies the
+// server-authoritative results of mutations straight from their responses, and persists a
+// snapshot to localStorage so a hard refresh can paint before the network returns.
+//
+// Freshness: TTL (5 min) + visibility / interval revalidation in useListCacheSync. Cold boot
+// always revalidates. Day-sensitive flags still invalidate across midnight via loadedDate.
 //
 // View/modal state (selected quest, form toggles) stays local to the page — only the
 // shared lists and their mutations live here.
-// Which entity an in-flight completion belongs to (one-off quest vs recurring ritual).
 export type CompletableKind = 'quest' | 'recurring';
 
 interface QuestsState {
@@ -33,10 +42,17 @@ interface QuestsState {
   doneTodayQuests: Quest[];
   recurringQuests: RecurringQuestWithStreak[];
   loaded: boolean;
+  // True while a network refresh is in flight. Distinguishes "still waiting for first
+  // paint" (loading && !loaded) from a background SWR refresh over already-shown data.
+  loading: boolean;
   // Local calendar day the lists were last fetched on (YYYY-MM-DD). The server-computed
   // day-sensitive flags (isCompletedToday / isDueToday, overdue) are only valid for the
   // day they were fetched, so we track this to invalidate the cache across midnight.
   loadedDate: string | null;
+  // Wall-clock ms of the last successful network fetch — drives the TTL.
+  fetchedAt: number | null;
+  // Owner of the in-memory + localStorage snapshot; set by boot().
+  userId: string | null;
   // Ids with a completion request currently in flight. Kept here rather than in the
   // component so the list card and the open detail modal — two separate instances of
   // useQuestActions / useRecurringQuestActions for the same entity — share one guard.
@@ -44,19 +60,28 @@ interface QuestsState {
   completingRecurringIds: string[];
 }
 
+// Dedup concurrent refresh() callers (layout boot + page load + interval).
+let questsRefreshInflight: Promise<void> | null = null;
+
 export const useQuestsStore = defineStore('quests', {
   state: (): QuestsState => ({
     activeQuests: [],
     doneTodayQuests: [],
     recurringQuests: [],
     loaded: false,
+    loading: false,
     loadedDate: null,
+    fetchedAt: null,
+    userId: null,
     completingQuestIds: [],
     completingRecurringIds: [],
   }),
   getters: {
     isCompleting: (state) => (kind: CompletableKind, id: string) =>
       (kind === 'quest' ? state.completingQuestIds : state.completingRecurringIds).includes(id),
+    // First paint with no snapshot yet. Soft refreshes over cached/hydrated data keep
+    // `loaded` true so this stays false (no flash of the loading shell).
+    isInitialLoading: (state) => state.loading && !state.loaded,
   },
   actions: {
     // ── In-flight completions ───────────────────────────────────────────────
@@ -77,32 +102,124 @@ export const useQuestsStore = defineStore('quests', {
       else this.completingRecurringIds = this.completingRecurringIds.filter((x) => x !== id);
     },
 
-    // Fetch both per-user lists. Pages call this on mount; the cache keeps navigation
-    // between pages from refetching — EXCEPT once the local calendar day has changed
-    // since the last load, since the day-sensitive flags (done/due today, overdue) go
-    // stale when the tab is left open across midnight. Always fetched client-side
-    // (per-user, behind login — no SSR benefit, avoids the session-fetch baseURL quirks).
-    async load() {
-      const today = localDateString();
-      if (this.loaded && this.loadedDate === today) return;
-      const [quests, recurring] = await Promise.all([
-        client.api.quests
-          .$get({ query: { status: 'active', include: 'subTasks', includeDoneToday: 'true' } })
-          .then((r) => (r.ok ? r.json() : []))
-          .catch(() => []),
-        client.api['recurring-quests']
-          .$get()
-          .then((r) => (r.ok ? r.json() : []))
-          .catch(() => []),
-      ]);
-      // The list carries the active rows plus (via includeDoneToday) the day's completed
-      // top-level quests; split on status so each drives its own section.
-      const all = quests as Quest[];
-      this.activeQuests = all.filter((q) => q.status === 'active');
-      this.doneTodayQuests = all.filter((q) => q.status === 'completed');
-      this.recurringQuests = recurring as RecurringQuestWithStreak[];
+    reset() {
+      this.activeQuests = [];
+      this.doneTodayQuests = [];
+      this.recurringQuests = [];
+      this.loaded = false;
+      this.loading = false;
+      this.loadedDate = null;
+      this.fetchedAt = null;
+      this.userId = null;
+      this.completingQuestIds = [];
+      this.completingRecurringIds = [];
+      questsRefreshInflight = null;
+    },
+
+    // Sync hydrate from localStorage. Ignores a snapshot from another calendar day —
+    // day-sensitive flags (done/due today, DONE TODAY strip) would be wrong.
+    hydrateFromCache() {
+      if (!this.userId) return;
+      const snap = readQuestsListCache(this.userId);
+      if (!snap) return;
+      if (snap.loadedDate !== localDateString()) return;
+      this.activeQuests = snap.activeQuests;
+      this.doneTodayQuests = snap.doneTodayQuests;
+      this.recurringQuests = snap.recurringQuests;
       this.loaded = true;
-      this.loadedDate = today;
+      this.loadedDate = snap.loadedDate;
+      this.fetchedAt = snap.fetchedAt;
+    },
+
+    persist() {
+      if (!this.userId || !this.loaded || this.loadedDate == null || this.fetchedAt == null) return;
+      writeQuestsListCache(this.userId, {
+        fetchedAt: this.fetchedAt,
+        loadedDate: this.loadedDate,
+        activeQuests: this.activeQuests,
+        doneTodayQuests: this.doneTodayQuests,
+        recurringQuests: this.recurringQuests,
+      });
+    },
+
+    // Layout entry: bind the user, paint from snapshot if any, always revalidate.
+    async boot(userId: string) {
+      if (this.userId !== userId) {
+        this.reset();
+        this.userId = userId;
+      } else if (!this.userId) {
+        this.userId = userId;
+      }
+      this.hydrateFromCache();
+      await this.refresh({ force: true });
+    },
+
+    // Pages call this on mount; with a live boot it is a TTL-gated soft refresh.
+    async load() {
+      if (!this.userId) return;
+      if (!this.loaded) this.hydrateFromCache();
+      await this.refreshIfStale();
+    },
+
+    // Soft refresh when older than maxAge (default TTL), or when the calendar day changed.
+    async refreshIfStale(maxAgeMs = LIST_CACHE_TTL_MS) {
+      const today = localDateString();
+      if (
+        this.loaded &&
+        this.loadedDate === today &&
+        isCacheFresh(this.fetchedAt, maxAgeMs)
+      ) {
+        return;
+      }
+      await this.refresh();
+    },
+
+    // Network fetch. Never clears lists before the response (SWR). Skips while a complete
+    // is in flight unless force (boot) — avoids clobbering optimistic complete UI.
+    async refresh(options?: { force?: boolean }) {
+      if (!this.userId) return;
+      if (
+        !options?.force &&
+        (this.completingQuestIds.length > 0 || this.completingRecurringIds.length > 0)
+      ) {
+        return;
+      }
+      if (questsRefreshInflight) return questsRefreshInflight;
+
+      this.loading = true;
+      questsRefreshInflight = (async () => {
+        try {
+          const [quests, recurring] = await Promise.all([
+            client.api.quests
+              .$get({ query: { status: 'active', include: 'subTasks', includeDoneToday: 'true' } })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            client.api['recurring-quests']
+              .$get()
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+          ]);
+          // Keep the painted snapshot if the network failed — don't wipe to empty.
+          if (quests == null && recurring == null) return;
+          if (quests != null) {
+            const all = quests as Quest[];
+            this.activeQuests = all.filter((q) => q.status === 'active');
+            this.doneTodayQuests = all.filter((q) => q.status === 'completed');
+          }
+          if (recurring != null) {
+            this.recurringQuests = recurring as RecurringQuestWithStreak[];
+          }
+          this.loaded = true;
+          this.loadedDate = localDateString();
+          this.fetchedAt = Date.now();
+          this.persist();
+        } finally {
+          this.loading = false;
+          questsRefreshInflight = null;
+        }
+      })();
+
+      return questsRefreshInflight;
     },
 
     // ── One-off quests ──────────────────────────────────────────────────────
@@ -136,6 +253,7 @@ export const useQuestsStore = defineStore('quests', {
       // the tag counts on Status must refetch next time it opens.
       useTagsStore().invalidate();
       useFeedbackStore().showWarnings(result.warnings);
+      this.persist();
     },
     // Completion: drop from the active list, apply server-authoritative player state,
     // and surface a level-up. Pages then sync their own view state (close detail).
@@ -187,11 +305,13 @@ export const useQuestsStore = defineStore('quests', {
         const n = result.cascadedCompletions;
         feedback.showInfo(`Completed with ${n} sub-task${n === 1 ? '' : 's'}.`);
       }
+      this.persist();
     },
     removeQuest(id: string) {
       this.dropQuestFromLists(id);
       // Deleting a quest cascade-removes its tag pins, dropping those tags' usageCount.
       useTagsStore().invalidate();
+      this.persist();
     },
     applyUpdated(result: QuestWithWarnings) {
       const updated = result.quest;
@@ -210,6 +330,7 @@ export const useQuestsStore = defineStore('quests', {
       // An edit may have changed the quest's tag set (replace semantics), moving counts.
       useTagsStore().invalidate();
       useFeedbackStore().showWarnings(result.warnings);
+      this.persist();
     },
 
     // ── Tags on quests ──────────────────────────────────────────────────────
@@ -238,6 +359,7 @@ export const useQuestsStore = defineStore('quests', {
         tags: fn(q.tags),
         ...(q.subTasks ? { subTasks: q.subTasks.map((st) => ({ ...st, tags: fn(st.tags) })) } : {}),
       }));
+      this.persist();
     },
 
     // ── Recurring quests ────────────────────────────────────────────────────
@@ -262,6 +384,7 @@ export const useQuestsStore = defineStore('quests', {
             }
           : rq,
       );
+      this.persist();
     },
     // A backfilled *past* day: fold in the refreshed streak counters and player XP, but —
     // unlike applyRecurringCompleted — leave isCompletedToday alone. Backfill only ever
@@ -281,21 +404,27 @@ export const useQuestsStore = defineStore('quests', {
           ? { ...rq, streak: rq.streak ? { ...rq.streak, ...result.streak } : rq.streak }
           : rq,
       );
+      this.persist();
     },
     removeRecurring(id: string) {
       this.recurringQuests = this.recurringQuests.filter((rq) => rq.id !== id);
+      this.persist();
     },
     applyRecurringUpdated(quest: RecurringQuest) {
       // Bare row from PATCH — merge over the existing entry so streak/today flags survive.
       this.recurringQuests = this.recurringQuests.map((rq) =>
         rq.id === quest.id ? { ...rq, ...quest } : rq,
       );
+      this.persist();
     },
     // The create response is just the bare quest (no timezone-derived today flags or
     // streak relation), so we refetch rather than fabricate those client-side.
     async refreshRecurring() {
       const res = await client.api['recurring-quests'].$get();
-      if (res.ok) this.recurringQuests = await res.json();
+      if (res.ok) {
+        this.recurringQuests = await res.json();
+        this.persist();
+      }
     },
   },
 });
