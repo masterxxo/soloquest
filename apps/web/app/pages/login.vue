@@ -31,30 +31,39 @@ async function onSubmit() {
 </script>
 
 <template>
-  <section class="w-full max-w-[360px] rounded-[12px] border border-[#2a4dd0] bg-[rgba(10,20,45,0.75)] p-8 shadow-[0_0_24px_rgba(56,120,255,0.35),inset_0_0_18px_rgba(56,120,255,0.12)] backdrop-blur-[6px]">
-    <p class="m-0 text-[0.7rem] tracking-[0.3em] text-blue">[ SYSTEM ]</p>
-    <h1 class="m-0 mt-1 text-[1.6rem] text-[#eaf2ff] [text-shadow:0_0_12px_rgba(91,139,255,0.6)]">Welcome back, Hunter</h1>
-    <p class="m-0 mb-6 mt-1 text-[0.85rem] text-[#8fa9d8]">Sign in to resume your quests.</p>
+  <section class="dl-row-in corner-cut w-full max-w-[380px] border border-dl-grid-line bg-dl-surface">
+    <!-- Panel header band — mirrors the DlModal chrome: violet dot + mono-caps label. -->
+    <header class="flex items-center gap-2 border-b border-dl-band-line px-5 py-3">
+      <span class="h-1 w-1 shrink-0 bg-dl-violet" aria-hidden="true" />
+      <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Sign in</span>
+    </header>
 
-    <form @submit.prevent="onSubmit" class="flex flex-col gap-[0.9rem]">
-      <label class="flex flex-col gap-[0.35rem] text-[0.8rem] text-[#9bb4e6]">
-        Email
-        <input v-model="email" type="email" required autocomplete="email" class="rounded-[6px] border border-[#29407e] bg-[#060c1c] px-3 py-[0.6rem] text-[0.95rem] text-[#eaf2ff] outline-none focus:border-blue focus:shadow-[0_0_0_2px_rgba(91,139,255,0.25)]" />
-      </label>
-      <label class="flex flex-col gap-[0.35rem] text-[0.8rem] text-[#9bb4e6]">
-        Password
-        <input v-model="password" type="password" required autocomplete="current-password" class="rounded-[6px] border border-[#29407e] bg-[#060c1c] px-3 py-[0.6rem] text-[0.95rem] text-[#eaf2ff] outline-none focus:border-blue focus:shadow-[0_0_0_2px_rgba(91,139,255,0.25)]" />
-      </label>
+    <div class="px-5 py-6 md:px-6">
+      <h1 class="font-dl-display text-dl-title font-semibold leading-tight text-dl-ink">Welcome back</h1>
+      <p class="mt-1 text-dl-body text-dl-ink-muted">Sign in to resume your quests.</p>
 
-      <p v-if="errorMsg" class="m-0 text-[0.8rem] text-danger-bright">{{ errorMsg }}</p>
+      <form @submit.prevent="onSubmit" class="mt-6 flex flex-col gap-4">
+        <!-- Error — magenta reads on the bar only, never as coloured text (system law). -->
+        <p v-if="errorMsg" role="alert" class="border-l-[3px] border-dl-magenta bg-dl-sunk px-3 py-2 text-dl-body text-dl-ink">{{ errorMsg }}</p>
 
-      <button type="submit" :disabled="loading" class="mt-2 cursor-pointer rounded-[6px] border-0 bg-gradient-to-b from-[#2f6bff] to-[#1d3fb8] p-[0.7rem] font-semibold text-white shadow-[0_0_16px_rgba(56,120,255,0.5)] disabled:cursor-not-allowed disabled:opacity-60">
-        {{ loading ? 'Signing in…' : 'Sign in' }}
-      </button>
-    </form>
+        <label class="flex flex-col gap-1.5">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Email</span>
+          <input v-model="email" type="email" required autocomplete="email" class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint" />
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Password</span>
+          <input v-model="password" type="password" required autocomplete="current-password" class="dl-focus-inset border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint" />
+        </label>
 
-    <p class="m-0 mt-5 text-center text-[0.8rem] text-[#8fa9d8]">
-      No account yet? <NuxtLink to="/register" class="text-blue">Register</NuxtLink>
-    </p>
+        <button type="submit" :disabled="loading" class="dl-focus-inset mt-1 cursor-pointer bg-dl-violet px-5 py-2.5 font-dl-mono text-dl-label font-semibold uppercase tracking-wide text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60">
+          {{ loading ? 'Signing in…' : 'Sign in' }}
+        </button>
+      </form>
+
+      <p class="mt-6 text-center text-dl-body text-dl-ink-muted">
+        No account yet?
+        <NuxtLink to="/register" class="dl-focus-inset font-medium text-dl-violet hover:text-dl-violet-hot hover:underline">Register</NuxtLink>
+      </p>
+    </div>
   </section>
 </template>
