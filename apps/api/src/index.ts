@@ -9,6 +9,7 @@ import { recurringQuestsRouter } from './routes/recurring-quests';
 import { userSettingsRouter } from './routes/user-settings';
 import { tagsRouter } from './routes/tags';
 import { startDailyCron } from './cron/daily-tick';
+import { handleMcpRequest } from './mcp/handler';
 
 const app = new Hono<{ Variables: Variables }>().basePath('/api');
 
@@ -28,6 +29,7 @@ app.onError((err, c) => {
 app.on(['GET', 'POST'], '/auth/*', (c) => auth.handler(c.req.raw));
 
 // Load the session into context for every route registered below.
+// API keys also resolve here when enableSessionForAPIKeys is on (Bearer / x-api-key).
 app.use('*', sessionMiddleware);
 
 app.get('/health', async (c) => {
@@ -43,9 +45,14 @@ export const routes = app
   .route('/user', userSettingsRouter)
   .route('/tags', tagsRouter);
 
+// Remote MCP (Streamable HTTP). Not part of AppType / Hono RPC — machine clients only,
+// authenticated by API key. Tools proxy the quest routes in-process.
+app.all('/mcp', (c) => handleMcpRequest(c, routes));
+
 const port = Number(process.env.PORT ?? 3001);
 serve({ fetch: app.fetch, port });
 console.log(`API → http://localhost:${port}/api/health`);
+console.log(`MCP → http://localhost:${port}/api/mcp`);
 
 // Daily streak-reset tick (03:00 UTC). Registered after the server is up.
 startDailyCron(db);

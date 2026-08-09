@@ -78,6 +78,13 @@
       "when": 1784531591811,
       "tag": "0010_glossy_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786304670799,
+      "tag": "0011_funny_nova",
+      "breakpoints": true
     }
   ]
 }
