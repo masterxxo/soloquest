@@ -132,10 +132,10 @@ export function registerQuestTools(server: McpServer, apiProxy: ApiProxy): void 
     'create-quest',
     {
       description:
-        'Create a quest. Title and description are required. Difficulty ranks E–S (default E). Priority is a marker only (does not sort the list). XP is granted by the server, never sent by the client.',
+        'Create a quest. Title is required; description is optional. Difficulty ranks E–S (default E). Priority is a marker only (does not sort the list). XP is granted by the server, never sent by the client.',
       inputSchema: {
         title: z.string().min(1).max(255).describe('Quest title.'),
-        description: z.string().min(1).describe('Quest description (required by the API).'),
+        description: z.string().optional().describe('Quest description. Omit for none.'),
         difficulty: difficultySchema.optional().describe('Rank / difficulty: E, D, C, B, A, or S.'),
         priority: prioritySchema.optional().describe('Importance marker: low, normal, or high.'),
         deadline: z
@@ -158,8 +158,8 @@ export function registerQuestTools(server: McpServer, apiProxy: ApiProxy): void 
     async (args) => {
       const body: Record<string, unknown> = {
         title: args.title,
-        description: args.description,
       };
+      if (args.description !== undefined) body.description = args.description;
       if (args.difficulty !== undefined) body.difficulty = args.difficulty;
       if (args.priority !== undefined) body.priority = args.priority;
       if (args.deadline !== undefined) body.deadline = args.deadline;
@@ -183,7 +183,7 @@ export function registerQuestTools(server: McpServer, apiProxy: ApiProxy): void 
       inputSchema: {
         id: z.string().uuid().describe('Quest id (UUID).'),
         title: z.string().min(1).max(255).optional().describe('New title.'),
-        description: z.string().min(1).optional().describe('New description.'),
+        description: z.string().optional().describe('New description. Pass an empty string to clear.'),
         difficulty: difficultySchema.optional().describe('New rank / difficulty.'),
         priority: prioritySchema.optional().describe('New priority marker.'),
         deadline: z

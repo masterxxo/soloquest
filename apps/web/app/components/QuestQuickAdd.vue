@@ -50,7 +50,6 @@ async function submit() {
     const res = await client.api.quests.$post({
       json: {
         title: trimmed,
-        description: trimmed, // mirrors the title; the full form is where a real description lives
         difficulty: difficulty.value,
         deadline: deadline.value ? new Date(deadline.value) : null,
         tagIds: selectedTags.value.map((t) => t.id),

@@ -31,7 +31,7 @@ Locally, use `http://localhost:3001/api/mcp` (or your Nuxt origin if `/api` is p
 |------|--------|
 | `list-quests` | List quests (optional status / parentId / subTasks) |
 | `get-quest` | Fetch one quest by id |
-| `create-quest` | Create a quest (title + description required) |
+| `create-quest` | Create a quest (title required; description optional) |
 | `update-quest` | Patch an active quest |
 
 A key authenticates as the owning user for the whole API (same power as a session cookie). Revoke unused keys from Status.
