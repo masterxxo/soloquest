@@ -8,8 +8,8 @@ import {
   writeTagsListCache,
 } from '~/lib/list-cache';
 
-// Single client-side cache of the user's tags (with usage counts). Shared by the tag picker
-// in the quest form (its search source + on-the-fly create), the filter popover, and the
+// Single client-side cache of the user's tags (with usage counts). Shared by the tag combobox
+// in the quest form and quick-add (its search source + on-the-fly create), the filter popover, and the
 // Status tag manager — so all three read and mutate one list rather than each fetching.
 //
 // usageCount is server-derived and counts EVERY existing quest carrying a tag (any status).
@@ -134,7 +134,7 @@ export const useTagsStore = defineStore('tags', {
 
     // Create a tag (or get the existing one on a normalized-name collision — the backend
     // returns 200 either way, with a deterministic colour when we send none). Folds the
-    // result into the cache and returns it so the caller (the picker) can immediately pin it.
+    // result into the cache and returns it so the caller (TagCombobox) can immediately pin it.
     async createTag(name: string): Promise<TagWithUsage | null> {
       const res = await client.api.tags.$post({ json: { name } });
       if (!res.ok) return null;

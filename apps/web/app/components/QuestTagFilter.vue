@@ -9,7 +9,7 @@ import type { TagWithUsage } from '~/lib/api-client';
 // Scalable tag filter: a button opening a searchable popover instead of a chip per tag inline
 // (which stopped scaling past ~20 tags). Selected tags still show OUTSIDE the popover as
 // coloured chips (capped, with "+N more") so the active filter is visible at a glance. Shares
-// the keyboard/Escape model with the quest-form picker via useTagCombobox.
+// the keyboard/Escape model with TagCombobox via useTagCombobox.
 const MAX_VISIBLE_CHIPS = 4;
 
 const tagsStore = useTagsStore();

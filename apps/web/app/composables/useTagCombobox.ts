@@ -1,6 +1,6 @@
 import { toValue, type MaybeRefOrGetter, type Ref } from 'vue';
 
-// Shared listbox behaviour for both tag comboboxes — the quest-form picker and the filter
+// Shared listbox behaviour for the tag combobox (form + quick-add) and the filter
 // popover — so their keyboard model and the Escape handling stay identical (the user learns
 // it once). Each caller owns its own options, rendering and selection semantics; this only
 // runs the open/highlight/keyboard state over an options array.
@@ -9,7 +9,7 @@ export function useTagCombobox<T>(params: {
   options: MaybeRefOrGetter<readonly T[]>;
   // Commit the highlighted (or clicked) option — pin a tag, toggle a filter, create one.
   select: (option: T) => void;
-  // Optional: Backspace on an empty input (the picker unpins its last chip).
+  // Optional: Backspace on an empty input (the combobox unpins its last chip).
   backspaceOnEmpty?: () => void;
 }) {
   const open = ref(false);

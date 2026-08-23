@@ -197,7 +197,7 @@ async function onSubmit() {
       </select>
     </label>
 
-    <QuestTagPicker v-model="selectedTags" />
+    <TagCombobox v-model="selectedTags" label="Tags" />
 
     <p v-if="errorMsg" class="m-0 text-dl-meta text-dl-magenta">{{ errorMsg }}</p>
 

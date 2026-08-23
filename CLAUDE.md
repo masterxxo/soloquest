@@ -345,7 +345,7 @@ All of the following exist, are used, and are meant to stay:
   (rename and/or recolour) / delete); `GET /api/quests` attaches each quest's `tags:
   [{id,name,color}]` through one batched relational query (no N+1), and quest POST/PATCH take
   `tagIds` (ownership-checked, capped at `MAX_TAGS_PER_QUEST`, **replace** semantics on PATCH).
-  The quest form has a Todoist-style combobox (`QuestTagPicker`), the quest list a client-side
+  The quest form and quick-add share a Todoist-style combobox (`TagCombobox`), the quest list a client-side
   **OR** tag filter in a searchable popover (`QuestTagFilter`, folded into `useQuestFilters`,
   `?tags=` in the URL — unknown ids are pruned from the URL on load), and Status a
   rename/recolour/delete manager (`TagManager`).
