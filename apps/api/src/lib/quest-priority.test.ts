@@ -75,8 +75,10 @@ describe('quest priority', () => {
     // The create schema leaves an omitted priority undefined (no Zod default on purpose — see
     // schemas.ts); the DB default is what supplies 'normal'. The POST route passes the
     // undefined straight through, so Drizzle omits the column and the default lands.
-    const parsed = createQuestSchema.parse({ title: 'x', description: 'y' });
+    const parsed = createQuestSchema.parse({ title: 'x' });
+    expect(parsed.description).toBeUndefined();
     expect(parsed.priority).toBeUndefined();
+    expect(createQuestSchema.safeParse({ title: 'x', description: '' }).success).toBe(true);
   });
 
   it('2. rejects a value outside the enum on create and update (validation, before any write)', () => {

@@ -8,10 +8,23 @@ import { tagSwatchStyle } from '~/lib/tag-colors';
 import type { QuestTag } from '~/lib/api-client';
 
 // Todoist-style tag combobox: search existing tags, pick with mouse or keyboard, or create
-// a new one on the fly without leaving the form. The selected set is a v-model of the quest
-// form; creation goes through the shared tags store (POST /api/tags, create-or-return). The
-// open/highlight/keyboard state is the shared useTagCombobox, so this matches the filter popover.
+// a new one on the fly. Shared by the quest form and the quick-add row so search/create/pin
+// lives in one place. The selected set is a v-model; creation goes through the tags store
+// (POST /api/tags, create-or-return). Keyboard/Escape is the shared useTagCombobox, so this
+// matches the filter popover. The filter itself is a different widget (toggle, no create).
 const selected = defineModel<QuestTag[]>({ required: true });
+
+withDefaults(
+  defineProps<{
+    // Visible field label (a real <label for> the input). Empty in the compact row;
+    // that variant names the input with aria-label instead.
+    label?: string;
+    placeholder?: string;
+    // Tighter padding and meta type so the widget can sit in the quick-add detail row.
+    compact?: boolean;
+  }>(),
+  { label: '', placeholder: 'Add tags…', compact: false },
+);
 
 const tagsStore = useTagsStore();
 const { sortedTags } = storeToRefs(tagsStore);
@@ -25,7 +38,6 @@ const listboxId = useId();
 
 const selectedIds = computed(() => new Set(selected.value.map((t) => t.id)));
 const normalizedQuery = computed(() => normalizeTagName(query.value));
-
 // Existing tags matching the query (case-insensitive contains on the normalized name) and
 // not already pinned. `contains`, so "om" surfaces "Dom".
 const matches = computed(() =>
@@ -102,10 +114,21 @@ function onBlur() {
 }
 
 // The list is a fixed-position layer teleported to <body>, anchored to the field box — so
-// opening it never grows the form/modal, and the modal body's overflow can't clip it.
+// opening it never grows the form/modal/row, and a parent overflow can't clip it.
 const { anchoredStyle } = useAnchoredList(fieldEl, open);
 
 const optionId = (i: number) => `${listboxId}-opt-${i}`;
+const inputId = `${listboxId}-input`;
+
+// Combobox ↔ listbox wiring (APG). Kept off the template so the input stays readable.
+const comboboxAria = computed(() => ({
+  role: 'combobox' as const,
+  'aria-autocomplete': 'list' as const,
+  'aria-expanded': open.value,
+  'aria-controls': listboxId,
+  'aria-activedescendant':
+    open.value && options.value.length > 0 ? optionId(activeIndex.value) : undefined,
+}));
 
 // Keep the highlighted option visible as the arrow keys move it past the list's own scroll.
 watch(activeIndex, (i) => {
@@ -115,11 +138,16 @@ watch(activeIndex, (i) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-1.5">
-    <span :id="`${listboxId}-label`" class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Tags</span>
+  <div :class="compact ? 'flex min-w-[9rem] flex-1 flex-col' : 'flex flex-col gap-1.5'">
+    <label
+      v-if="label"
+      :for="inputId"
+      class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted"
+    >{{ label }}</label>
     <div
       ref="fieldEl"
-      class="flex flex-wrap items-center gap-1.5 border border-dl-grid-line bg-dl-surface px-2 py-1.5 focus-within:border-dl-violet"
+      class="flex flex-wrap items-center border border-dl-grid-line bg-dl-surface focus-within:border-dl-violet"
+      :class="compact ? 'gap-1 px-2 py-1' : 'gap-1.5 px-2 py-1.5'"
       @click="inputEl?.focus()"
     >
       <TagChip
@@ -131,20 +159,16 @@ watch(activeIndex, (i) => {
         @remove="removeTag(tag.id)"
       />
 
-      <!-- The combobox input. role/aria wire it to the listbox below for screen readers. -->
       <input
+        :id="inputId"
         ref="inputEl"
         v-model="query"
-        type="text"
-        role="combobox"
-        aria-autocomplete="list"
-        :aria-expanded="open"
-        :aria-controls="listboxId"
-        :aria-activedescendant="open && options.length ? optionId(activeIndex) : undefined"
-        :aria-labelledby="`${listboxId}-label`"
+        v-bind="comboboxAria"
+        :aria-label="label ? undefined : 'Tags'"
         :maxlength="TAG_NAME_MAX_LENGTH"
-        :placeholder="selected.length ? '' : 'Add tags…'"
-        class="min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
+        :placeholder="selected.length ? '' : placeholder"
+        class="flex-1 border-0 bg-transparent p-0 text-dl-ink outline-none placeholder:text-dl-ink-faint"
+        :class="compact ? 'min-w-[4rem] text-dl-meta' : 'min-w-[6rem] text-dl-body'"
         @focus="openList"
         @input="openList"
         @keydown="onKeydown"
@@ -153,7 +177,7 @@ watch(activeIndex, (i) => {
     </div>
 
     <!-- Suggestion list. Teleported to <body> and fixed-positioned (via useAnchoredList) so it
-         layers over the modal instead of growing it, and the modal body's overflow can't clip
+         layers over the modal/row instead of growing it, and a parent overflow can't clip
          it. z-[55] sits above the modal (z-50) and below toasts (z-60). -->
     <Teleport to="body">
       <ul
@@ -164,25 +188,28 @@ watch(activeIndex, (i) => {
         class="z-[55] m-0 flex list-none flex-col overflow-y-auto border border-dl-grid-line bg-dl-surface p-1 shadow-[0_8px_24px_rgba(20,17,31,0.15)]"
         @mousedown.prevent
       >
-      <li
-        v-for="(option, i) in options"
-        :id="optionId(i)"
-        :key="option.kind === 'tag' ? option.tag.id : 'create'"
-        role="option"
-        :aria-selected="i === activeIndex"
-        class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-dl-body"
-        :class="i === activeIndex ? 'bg-dl-violet-wash text-dl-ink' : 'text-dl-ink-muted hover:bg-dl-sunk'"
-        @mousedown.prevent="choose(option)"
-        @mouseenter="activeIndex = i"
-      >
-        <template v-if="option.kind === 'tag'">
-          <span class="h-2.5 w-2.5 flex-none rounded-full" :style="tagSwatchStyle(option.tag.color)" />
-          {{ option.tag.name }}
-        </template>
-        <template v-else>
-          <span class="text-dl-ink-faint">Create</span> "{{ option.label }}"
-        </template>
-      </li>
+        <li
+          v-for="(option, i) in options"
+          :id="optionId(i)"
+          :key="option.kind === 'tag' ? option.tag.id : 'create'"
+          role="option"
+          :aria-selected="i === activeIndex"
+          class="flex cursor-pointer items-center gap-2 px-2 py-1.5"
+          :class="[
+            compact ? 'text-dl-meta' : 'text-dl-body',
+            i === activeIndex ? 'bg-dl-violet-wash text-dl-ink' : 'text-dl-ink-muted hover:bg-dl-sunk',
+          ]"
+          @mousedown.prevent="choose(option)"
+          @mouseenter="activeIndex = i"
+        >
+          <template v-if="option.kind === 'tag'">
+            <span class="h-2.5 w-2.5 flex-none rounded-full" :style="tagSwatchStyle(option.tag.color)" />
+            {{ option.tag.name }}
+          </template>
+          <template v-else>
+            <span class="text-dl-ink-faint">Create</span> "{{ option.label }}"
+          </template>
+        </li>
       </ul>
     </Teleport>
   </div>

@@ -108,17 +108,19 @@ packages/eslint-config Shared flat config + the language rule
 4. **Migrations are file-based and reviewed.** `drizzle-kit generate` → read the SQL →
    apply by hand on production → verify with a query against the database. Never
    `drizzle-kit push`. Never auto-apply.
-5. **Better Auth owns the auth tables** (`user`, `session`, `account`, `verification`). Do
-   not hand-write them, do not add a second users table, never hash passwords manually.
-   `auth.ts` — not the Drizzle schema — is the source for auth columns: after editing it,
-   re-run the Better Auth CLI, *then* `drizzle-kit` (see Commands).
+5. **Better Auth owns the auth tables** (`user`, `session`, `account`, `verification`, and
+   with the API-key plugin `apikey`). Do not hand-write them, do not add a second users table,
+   never hash passwords manually. `auth.ts` — not the Drizzle schema — is the source for auth
+   columns: after editing it, re-run the Better Auth CLI, *then* `drizzle-kit` (see Commands).
 6. **User ids are `text`** (Better Auth's default). Every FK referencing a user is `text`,
    never `uuid`.
 7. **Same-origin, no CORS.** The API mounts everything under the `/api` basePath and no CORS
    middleware exists. In dev, Nuxt's `nitro.devProxy` forwards `/api`; in production the
    reverse proxy (Coolify/Traefik) puts web and api on one origin. Data fetching is
    client-side; the one deliberate exception is the SSR session fetch in `useAuthSession`,
-   which uses an absolute base and forwards the cookie header.
+   which uses an absolute base and forwards the cookie header. **Remote MCP** (`/api/mcp`)
+   is a second exception: machine hosts (Cursor, etc.) call it over HTTP with an API key —
+   still no CORS middleware; auth is Bearer / `x-api-key`, not a browser cookie.
 8. **Pinia is the source of player state in the UI** — the stores project server-owned
    values, they never compute XP or level themselves.
 9. **Calendar dates are `YYYY-MM-DD` strings in the user's timezone**, derived through one
@@ -237,6 +239,15 @@ packages/eslint-config Shared flat config + the language rule
     clears the snapshot and resets the stores. Chronicles / stats / heatmaps stay
     fetch-on-page — not part of this cache. Empty states must not flash during the first
     fetch (`isInitialLoading`); "No quests yet" only after a settled empty load.
+16. **Remote MCP is a thin Streamable HTTP adapter on the API.** Endpoint: `GET|POST|DELETE
+    /api/mcp` (same process as `@soloquest/api`, no separate service). Auth: Better Auth
+    `@better-auth/api-key` with `enableSessionForAPIKeys` — a valid key mocks a session so
+    existing `requireAuth` routes work unchanged. Keys accept `Authorization: Bearer` or
+    `x-api-key` (prefix `sq_`). MCP tools never embed quest/XP logic; they proxy
+    `/api/quests` in-process. v1 tools: `list-quests`, `get-quest`, `create-quest`,
+    `update-quest`. Key management UI lives on Status (`ApiKeyManager`); the plaintext secret
+    is shown once. A key is as powerful as a cookie session for that user — revoke unused keys.
+    Host config: see `apps/api/README.md`.
 
 ---
 
@@ -334,7 +345,7 @@ All of the following exist, are used, and are meant to stay:
   (rename and/or recolour) / delete); `GET /api/quests` attaches each quest's `tags:
   [{id,name,color}]` through one batched relational query (no N+1), and quest POST/PATCH take
   `tagIds` (ownership-checked, capped at `MAX_TAGS_PER_QUEST`, **replace** semantics on PATCH).
-  The quest form has a Todoist-style combobox (`QuestTagPicker`), the quest list a client-side
+  The quest form and quick-add share a Todoist-style combobox (`TagCombobox`), the quest list a client-side
   **OR** tag filter in a searchable popover (`QuestTagFilter`, folded into `useQuestFilters`,
   `?tags=` in the URL — unknown ids are pruned from the URL on load), and Status a
   rename/recolour/delete manager (`TagManager`).
@@ -352,6 +363,9 @@ All of the following exist, are used, and are meant to stay:
 - Achievements (streak milestones and lifetime totals), seeded idempotently.
 - Per-user timezone (`user_settings`), and a nightly cron that judges yesterday in each
   user's own timezone and resets broken streaks.
+- **Remote MCP** (`/api/mcp`) for AI hosts: per-user API keys (Status → API keys) and four
+  quest tools (`list-quests`, `get-quest`, `create-quest`, `update-quest`) that proxy the
+  existing CRUD routes.
 
 ---
 
@@ -364,7 +378,9 @@ All of the following exist, are used, and are meant to stay:
   and its preview are **read-only** — no undo, uncheck, or un-complete anywhere. Reversing a
   completion touches XP, level and achievements (the app's spine), so it is a separate,
   domain-confirmed decision. Do not add an undo affordance to `DoneQuestRow`, the read-only
-  `QuestDetail`, or the complete flow without that decision.
+  `QuestDetail`, or the complete flow without that decision. **MCP must not expose undo
+  either** — and v1 MCP deliberately omits `complete-quest` / delete / rituals (add those only
+  with an explicit decision).
 - **"Rituals" is a UI label only** — and the boundary is exact, in both directions:
   - **`recurring` everywhere in domain, data and types.** `apps/api`, `packages/db`,
     `packages/shared`, every wire type crossing into the frontend (e.g.

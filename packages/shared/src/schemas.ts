@@ -14,7 +14,11 @@ export function normalizeTagName(name: string): string {
 
 export const createQuestSchema = z.object({
   title: z.string().min(1).max(255),
-  description: z.string().min(1),
+  // Optional, matching the nullable DB column and recurring quests. Omitted on create →
+  // NULL; an empty string is allowed (the edit form sends it to clear). No Zod default —
+  // a `.default("")` would leak through `updateQuestSchema.partial()` and make an unrelated
+  // PATCH wipe the description.
+  description: z.string().optional(),
   difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
   // Optional, and deliberately WITHOUT a Zod default (unlike difficulty): omitted on create →
   // the DB column's NOT NULL DEFAULT 'normal' fills it. A schema `.default()` here would leak

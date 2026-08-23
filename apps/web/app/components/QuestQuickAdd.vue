@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { storeToRefs } from 'pinia';
 import { client, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { readApiError } from '~/lib/api-error';
 import { useFeedbackStore } from '~/stores/feedback';
-import { useTagsStore } from '~/stores/tags';
-import { useTagCombobox } from '~/composables/useTagCombobox';
-import { useAnchoredList } from '~/composables/useAnchoredList';
-import { tagSwatchStyle } from '~/lib/tag-colors';
-import { normalizeTagName, TAG_NAME_MAX_LENGTH, type Difficulty } from '@soloquest/shared';
+import type { Difficulty } from '@soloquest/shared';
 
 // Inline quick-add: a title-only field at rest that expands to the full capture (rank E–S, a
 // deadline, and tags) on focus, then posts a real quest. It owns its own POST and emits the
@@ -50,7 +45,6 @@ async function submit() {
     const res = await client.api.quests.$post({
       json: {
         title: trimmed,
-        description: trimmed, // mirrors the title; the full form is where a real description lives
         difficulty: difficulty.value,
         deadline: deadline.value ? new Date(deadline.value) : null,
         tagIds: selectedTags.value.map((t) => t.id),
@@ -68,89 +62,6 @@ async function submit() {
     submitting.value = false;
   }
 }
-
-// ── Tag combobox (Daylight) — search/create/pin, mirroring QuestTagPicker's behaviour ────────
-const tagsStore = useTagsStore();
-const { sortedTags } = storeToRefs(tagsStore);
-onMounted(() => { tagsStore.load(); });
-
-const tagQuery = ref('');
-const creatingTag = ref(false);
-const tagInputEl = ref<HTMLInputElement | null>(null);
-const tagFieldEl = ref<HTMLElement | null>(null);
-const listboxId = useId();
-
-const selectedTagIds = computed(() => new Set(selectedTags.value.map((t) => t.id)));
-const normalizedQuery = computed(() => normalizeTagName(tagQuery.value));
-
-const tagMatches = computed(() =>
-  sortedTags.value.filter(
-    (t) =>
-      !selectedTagIds.value.has(t.id) &&
-      (normalizedQuery.value === '' || t.normalizedName.includes(normalizedQuery.value)),
-  ),
-);
-const canCreate = computed(
-  () =>
-    normalizedQuery.value.length > 0 &&
-    !sortedTags.value.some((t) => t.normalizedName === normalizedQuery.value),
-);
-
-type Option = { kind: 'tag'; tag: QuestTag } | { kind: 'create'; label: string };
-const options = computed<Option[]>(() => {
-  const opts: Option[] = tagMatches.value.map((t) => ({
-    kind: 'tag',
-    tag: { id: t.id, name: t.name, color: t.color },
-  }));
-  if (canCreate.value) opts.push({ kind: 'create', label: tagQuery.value.trim() });
-  return opts;
-});
-
-function pin(tag: QuestTag) {
-  if (!selectedTagIds.value.has(tag.id)) selectedTags.value = [...selectedTags.value, tag];
-}
-function removeTag(id: string) {
-  selectedTags.value = selectedTags.value.filter((t) => t.id !== id);
-}
-async function chooseCreate(label: string) {
-  if (creatingTag.value) return;
-  creatingTag.value = true;
-  try {
-    const tag = await tagsStore.createTag(label);
-    if (tag) pin({ id: tag.id, name: tag.name, color: tag.color });
-    tagQuery.value = '';
-  } finally {
-    creatingTag.value = false;
-    tagInputEl.value?.focus();
-  }
-}
-function choose(option: Option) {
-  if (option.kind === 'tag') {
-    pin(option.tag);
-    tagQuery.value = '';
-    tagInputEl.value?.focus();
-  } else {
-    void chooseCreate(option.label);
-  }
-}
-
-const { open, activeIndex, openList, onKeydown } = useTagCombobox<Option>({
-  query: tagQuery,
-  options,
-  select: choose,
-  backspaceOnEmpty: () => {
-    if (selectedTags.value.length > 0) removeTag(selectedTags.value[selectedTags.value.length - 1]!.id);
-  },
-});
-function onTagBlur() {
-  open.value = false;
-}
-const { anchoredStyle } = useAnchoredList(tagFieldEl, open);
-const optionId = (i: number) => `${listboxId}-opt-${i}`;
-watch(activeIndex, (i) => {
-  if (!open.value || !import.meta.client) return;
-  nextTick(() => document.getElementById(optionId(i))?.scrollIntoView({ block: 'nearest' }));
-});
 </script>
 
 <template>
@@ -185,38 +96,7 @@ watch(activeIndex, (i) => {
         class="dl-focus-inset min-h-dl-touch border border-dl-grid-line bg-dl-surface px-2 py-1 font-dl-mono text-dl-meta text-dl-ink outline-none md:min-h-0"
       />
 
-      <!-- Tag combobox. -->
-      <div
-        ref="tagFieldEl"
-        class="flex min-w-[9rem] flex-1 flex-wrap items-center gap-1 border border-dl-grid-line bg-dl-surface px-2 py-1 focus-within:border-dl-violet"
-        @click="tagInputEl?.focus()"
-      >
-        <TagChip
-          v-for="tag in selectedTags"
-          :key="tag.id"
-          :name="tag.name"
-          :color="tag.color"
-          removable
-          @remove="removeTag(tag.id)"
-        />
-        <input
-          ref="tagInputEl"
-          v-model="tagQuery"
-          type="text"
-          role="combobox"
-          aria-autocomplete="list"
-          :aria-expanded="open"
-          :aria-controls="listboxId"
-          :aria-activedescendant="open && options.length ? optionId(activeIndex) : undefined"
-          :maxlength="TAG_NAME_MAX_LENGTH"
-          :placeholder="selectedTags.length ? '' : '+ Tag'"
-          class="min-w-[4rem] flex-1 border-0 bg-transparent p-0 text-dl-meta text-dl-ink outline-none placeholder:text-dl-ink-faint"
-          @focus="openList"
-          @input="openList"
-          @keydown="onKeydown"
-          @blur="onTagBlur"
-        />
-      </div>
+      <TagCombobox v-model="selectedTags" compact placeholder="+ Tag" />
 
       <div class="ml-auto flex items-center gap-2">
         <button
@@ -235,37 +115,5 @@ watch(activeIndex, (i) => {
         </button>
       </div>
     </div>
-
-    <!-- Tag suggestion list — teleported + fixed (via useAnchoredList) so it never grows the row. -->
-    <Teleport to="body">
-      <ul
-        v-if="open && options.length"
-        :id="listboxId"
-        role="listbox"
-        :style="anchoredStyle"
-        class="z-[55] m-0 flex list-none flex-col overflow-y-auto border border-dl-grid-line bg-dl-surface p-1 shadow-[0_8px_24px_rgba(20,17,31,0.15)]"
-        @mousedown.prevent
-      >
-        <li
-          v-for="(option, i) in options"
-          :id="optionId(i)"
-          :key="option.kind === 'tag' ? option.tag.id : 'create'"
-          role="option"
-          :aria-selected="i === activeIndex"
-          class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-dl-meta"
-          :class="i === activeIndex ? 'bg-dl-violet-wash text-dl-ink' : 'text-dl-ink-muted hover:bg-dl-sunk'"
-          @mousedown.prevent="choose(option)"
-          @mouseenter="activeIndex = i"
-        >
-          <template v-if="option.kind === 'tag'">
-            <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="tagSwatchStyle(option.tag.color)" />
-            {{ option.tag.name }}
-          </template>
-          <template v-else>
-            <span class="text-dl-ink-faint">Create</span> "{{ option.label }}"
-          </template>
-        </li>
-      </ul>
-    </Teleport>
   </form>
 </template>

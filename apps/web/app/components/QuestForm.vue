@@ -54,7 +54,7 @@ async function onCreate() {
   const res = await client.api.quests.$post({
     json: {
       title: title.value,
-      description: description.value,
+      description: description.value || undefined,
       difficulty: difficulty.value,
       priority: priority.value,
       deadline: deadline.value ? new Date(deadline.value) : null,
@@ -145,8 +145,7 @@ async function onSubmit() {
       <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Description</span>
       <textarea
         v-model="description"
-        placeholder="Description"
-        required
+        placeholder="Optional"
         rows="2"
         class="dl-focus-inset resize-y border border-dl-grid-line bg-dl-surface px-3 py-2 text-dl-body text-dl-ink outline-none placeholder:text-dl-ink-faint"
       />
@@ -198,7 +197,7 @@ async function onSubmit() {
       </select>
     </label>
 
-    <QuestTagPicker v-model="selectedTags" />
+    <TagCombobox v-model="selectedTags" label="Tags" />
 
     <p v-if="errorMsg" class="m-0 text-dl-meta text-dl-magenta">{{ errorMsg }}</p>
 

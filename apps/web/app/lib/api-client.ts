@@ -26,7 +26,7 @@ export type QuestWithWarnings = { quest: Quest; warnings: string[] };
 export type QuestTag = NonNullable<Quest['tags']>[number];
 
 // GET /api/tags → the user's tags, each with a usageCount (how many quests pin it). Used by
-// the tag picker (search source), the filter bar (chips) and the Status tag manager.
+// TagCombobox (search source), the filter bar (chips) and the Status tag manager.
 export type TagWithUsage = InferResponseType<typeof client.api.tags.$get, 200>[number];
 
 export type CompleteResult = InferResponseType<
