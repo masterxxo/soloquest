@@ -75,6 +75,9 @@ outside the agent. Re-running it inside the agent is pure overhead.
   prod/dev DB) migrated to the current schema, one per test. Get a database from it and
   pass it into the code under test — the helpers take a `DrizzleDB` argument, so nothing
   about `db` or `grantXp` is ever mocked. See `quest-cascade.test.ts` for the pattern.
+  **Placement is colocated, on purpose:** a unit test sits next to the module it covers
+  (`lib/tags.ts` → `lib/tags.test.ts`); only cross-module integration tests (HTTP-level via
+  `app.request()`, harness smoke tests) go in `apps/api/src/test/`. No `__tests__/` folders.
 - **Lint:** ESLint 9, flat config, shared via `@soloquest/eslint-config`.
 - **Deploy:** Hetzner + Coolify; GitHub Actions runs lint ∥ typecheck → test, then pings
   Coolify's deploy webhooks on `master`.
