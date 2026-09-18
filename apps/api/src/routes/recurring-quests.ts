@@ -217,10 +217,12 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       const timezone = await getUserTimezone(db, userId);
       const today = toDateString(getUserDate(new Date(), timezone));
 
+      // No date = "today", resolved here in the user's timezone — the same frame every
+      // range check below uses, so a client clock can never push a live complete out of range.
       const result = await completeRecurringQuestForDate(db, {
         quest,
         userId,
-        completedDate,
+        completedDate: completedDate ?? today,
         today,
         timezone,
       });

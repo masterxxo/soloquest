@@ -5,7 +5,6 @@ import {
   type Achievement,
 } from '~/lib/api-client';
 import { readApiError } from '~/lib/api-error';
-import { localDateString } from '~/lib/date';
 import { useQuestsStore } from '~/stores/quests';
 import { useFeedbackStore } from '~/stores/feedback';
 import { usePlayerStore } from '~/stores/player';
@@ -43,9 +42,11 @@ export function useRecurringQuestActions(
     if (!quests.beginComplete('recurring', quest.id)) return;
     errorMsg.value = null;
     try {
+      // No completedDate: the server resolves "today" in the user's saved timezone, so a
+      // browser clock sitting on the other side of midnight can't produce an out-of-range day.
       const res = await client.api['recurring-quests'][':id'].complete.$post({
         param: { id: quest.id },
-        json: { completedDate: localDateString() },
+        json: {},
       });
 
       // Already completed today (a second tab, or a request that raced this one). Not an

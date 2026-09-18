@@ -50,6 +50,16 @@ function offsetLabel(timezone: string): string {
   }
 }
 
+// The browser's own IANA zone, or null when the runtime can't tell. The one source for
+// both the Status page's "Detect" button and the boot-time auto-detect.
+export function browserTimezone(): string | null {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 // Data layer + saving of the user's timezone, client-side (RPC). Only the Status page
 // uses this for now, so we keep it local to a composable rather than growing a separate
 // store.
@@ -113,7 +123,7 @@ export function useUserSettings() {
 
   // Suggestion from the browser — saved like any other change.
   function detect() {
-    const browserTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const browserTz = browserTimezone();
     if (browserTz) setTimezone(browserTz);
   }
 

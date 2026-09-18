@@ -368,7 +368,13 @@ All of the following exist, are used, and are meant to stay:
     `invalidate()` from exactly those paths, and the next `load()` (e.g. entering Status) refetches.
 - Achievements (streak milestones and lifetime totals), seeded idempotently.
 - Per-user timezone (`user_settings`), and a nightly cron that judges yesterday in each
-  user's own timezone and resets broken streaks.
+  user's own timezone and resets broken streaks. **The settings row is created only by a
+  save** — `GET /api/user/settings` never lazy-creates it and reports `isDefault: true` while
+  none exists (the fallback `UTC`). That signal drives a **one-shot boot-time auto-detect**
+  (`useTimezoneAutodetect`, default layout): a user who never chose a zone gets the browser's
+  zone saved once; any saved row — a deliberate `UTC` included — is never overridden. A ritual's
+  live "complete today" sends **no `completedDate`** — the server resolves today in the saved
+  zone, the only frame it judges due days in; only a backfill sends its explicit past day.
 - **Remote MCP** (`/api/mcp`) for AI hosts: per-user API keys (Status → API keys) and four
   quest tools (`list-quests`, `get-quest`, `create-quest`, `update-quest`) that proxy the
   existing CRUD routes.
