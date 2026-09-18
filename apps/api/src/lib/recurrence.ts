@@ -49,24 +49,24 @@ export function fromDateString(value: string): Date {
   return new Date(Date.UTC(y!, m! - 1, d!));
 }
 
-/** Truncate any timestamp to UTC midnight of its calendar day. */
-function toUtcMidnight(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
 /**
  * Was this recurring quest required on the given day?
  *
- * `date` must already be the user's local calendar day at UTC midnight (use
- * getUserDate). The caller owns timezone conversion; this function is pure.
+ * `date` and `questStart` must both be the user's local calendar day at UTC midnight
+ * (use getUserDate) — the same frame of reference, so the every_x_days cadence counts
+ * from the day the user *saw* the ritual created, never from its UTC creation day (a
+ * ritual created late in the local evening in a negative-offset zone already has a
+ * next-day `createdAt` in UTC, which shifted every due day by one). The caller owns
+ * timezone conversion; this function is pure.
  *
  *   daily        → always.
- *   every_x_days → whole days since createdAt is a multiple of recurrenceValue.
+ *   every_x_days → whole days since questStart is a multiple of recurrenceValue.
  *   weekdays     → the day's weekday bit is set in the bitmask (bit 0 = Mon … 6 = Sun).
  */
 export function wasRequiredOn(
   quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
   date: Date,
+  questStart: Date,
 ): boolean {
   switch (quest.recurrenceType) {
     case 'daily':
@@ -74,8 +74,7 @@ export function wasRequiredOn(
 
     case 'every_x_days': {
       if (!quest.recurrenceValue || quest.recurrenceValue < 1) return false;
-      const start = toUtcMidnight(quest.createdAt);
-      const diffDays = Math.round((date.getTime() - start.getTime()) / MS_PER_DAY);
+      const diffDays = Math.round((date.getTime() - questStart.getTime()) / MS_PER_DAY);
       if (diffDays < 0) return false; // before the quest existed
       return diffDays % quest.recurrenceValue === 0;
     }
@@ -161,7 +160,7 @@ export function recalculateStreak(
   let run = 0;
   for (let t = questStart.getTime(); t <= todayTime; t += MS_PER_DAY) {
     const day = new Date(t);
-    if (!wasRequiredOn(quest, day)) continue;
+    if (!wasRequiredOn(quest, day, questStart)) continue;
     const done = completedDates.has(toDateString(day));
     // Today is still running: a not-yet-done today is neutral (skip), never a break.
     if (t === todayTime && !done) continue;
@@ -206,7 +205,8 @@ export function calendarWindowStart(today: Date, questStart: Date, weeks: number
 
 /**
  * Builds the day-by-day status calendar, from windowStart to today inclusive (no
- * future days). All dates are UTC midnight of the user's local day, so adding
+ * future days). All dates (`questStart` included — it anchors the every_x_days cadence
+ * and may precede windowStart) are UTC midnight of the user's local day, so adding
  * MS_PER_DAY never trips over DST. The status rule is the single source of truth
  * shared with the cron via wasRequiredOn:
  *   done          → the date is in completedDates.
@@ -221,6 +221,7 @@ export function buildRecurringCalendar(
   quest: { recurrenceType: string; recurrenceValue: number | null; createdAt: Date },
   windowStart: Date,
   today: Date,
+  questStart: Date,
   completedDates: Set<string>,
 ): RecurringCalendarDay[] {
   const days: RecurringCalendarDay[] = [];
@@ -229,7 +230,9 @@ export function buildRecurringCalendar(
     const ds = toDateString(date);
     let status: RecurringCalendarStatus;
     if (completedDates.has(ds)) status = 'done';
-    else if (date.getTime() < today.getTime() && wasRequiredOn(quest, date)) status = 'missed';
+    else if (date.getTime() < today.getTime() && wasRequiredOn(quest, date, questStart)) {
+      status = 'missed';
+    }
     else status = 'not_scheduled';
     days.push({ date: ds, status });
   }
@@ -265,5 +268,7 @@ export function buildRecentHistory(
     preCreation.push({ date: toDateString(new Date(t)), status: 'not_scheduled' });
   }
 
-  return preCreation.concat(buildRecurringCalendar(quest, effectiveStart, today, completedDates));
+  return preCreation.concat(
+    buildRecurringCalendar(quest, effectiveStart, today, questStart, completedDates),
+  );
 }

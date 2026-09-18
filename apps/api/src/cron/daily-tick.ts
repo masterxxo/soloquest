@@ -58,6 +58,7 @@ async function runUserTick(db: DrizzleDB, userId: string, now: Date): Promise<vo
     completedRecurringQuestIds: new Set(completions.map((row) => row.recurringQuestId)),
     currentStreaks: new Map(streaks.map((row) => [row.recurringQuestId, row.currentStreak])),
     day: yesterday,
+    timezone,
   });
   if (toReset.length === 0) return;
 

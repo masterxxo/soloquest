@@ -142,6 +142,9 @@ packages/eslint-config Shared flat config + the language rule
     `current` / `longest` / `total` from the *full* completion set via `recalculateStreak`,
     using the **same `wasRequiredOn` predicate** as the cron (`selectStreaksToReset`) and the
     heatmap (`buildRecurringCalendar`) — one due-day rule for all three, so they cannot drift.
+    `wasRequiredOn` takes the ritual's **local start day** (`getUserDate(createdAt, tz)`) as an
+    explicit argument in the same frame as the judged day; it never reads `createdAt` raw, so the
+    `every_x_days` cadence counts from the day the user saw the ritual created, not its UTC day.
     `current` = the run of consecutive *required* days each holding a completion, ending at the
     most recent required day; **today, if required but not yet done, is "in progress"** — it
     neither extends nor breaks the streak (mirrors the cron judging only closed days). `longest`

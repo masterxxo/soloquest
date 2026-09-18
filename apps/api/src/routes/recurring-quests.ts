@@ -79,7 +79,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       const questStart = getUserDate(quest.createdAt, timezone);
       return {
         ...quest,
-        isDueToday: wasRequiredOn(quest, today),
+        isDueToday: wasRequiredOn(quest, today, questStart),
         isCompletedToday: completedDates.has(todayStr),
         last7: buildRecentHistory(quest, today, HISTORY_DAYS, questStart, completedDates),
       };
@@ -277,7 +277,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       );
     const completedDates = new Set(windowCompletions.map((row) => row.completedDate));
 
-    const calendar = buildRecurringCalendar(quest, windowStart, today, completedDates);
+    const calendar = buildRecurringCalendar(quest, windowStart, today, questStart, completedDates);
 
     return c.json({
       streak: streak ?? null,

@@ -24,12 +24,14 @@ function reset(params: {
   completed?: string[];
   streaks?: Record<string, number>;
   day?: Date;
+  timezone?: string;
 }): string[] {
   return selectStreaksToReset({
     recurringQuests: params.quests,
     completedRecurringQuestIds: new Set(params.completed ?? []),
     currentStreaks: new Map(Object.entries(params.streaks ?? {})),
     day: params.day ?? SUNDAY,
+    timezone: params.timezone ?? 'UTC',
   });
 }
 
@@ -66,6 +68,21 @@ describe('selectStreaksToReset', () => {
     const everyThree = quest({ id: 'a', recurrenceType: 'every_x_days', recurrenceValue: 3 });
     expect(reset({ quests: [everyThree], streaks: { a: 2 } })).toEqual([]);
     expect(reset({ quests: [everyThree], streaks: { a: 2 }, day: MONDAY })).toEqual(['a']);
+  });
+
+  it('counts the every_x_days cadence from the local creation day, not the UTC one', () => {
+    // Created 2026-06-01 22:00 in New York = 2026-06-02 02:00 UTC. Every 2 days from the
+    // LOCAL start (06-01) → due on odd June days … 07-13 (42 days later) is due, 07-12 is not.
+    // Counting from the UTC day (06-02) would flip both — exactly the bug being pinned.
+    const tz = 'America/New_York';
+    const eveningQuest = quest({
+      id: 'a',
+      recurrenceType: 'every_x_days',
+      recurrenceValue: 2,
+      createdAt: new Date(Date.UTC(2026, 5, 2, 2, 0)),
+    });
+    expect(reset({ quests: [eveningQuest], streaks: { a: 2 }, timezone: tz })).toEqual([]);
+    expect(reset({ quests: [eveningQuest], streaks: { a: 2 }, day: MONDAY, timezone: tz })).toEqual(['a']);
   });
 
   it('selects only the failing quests out of a mixed batch', () => {
