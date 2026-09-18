@@ -130,7 +130,11 @@ packages/eslint-config Shared flat config + the language rule
    helper (`getUserDate` / `toDateString` in the API, `localDateString` in the web app).
    Do not mix frames of reference — this rule governs rituals, streaks and the completion
    calendar. (One-off quest `deadline` / `completedAt` are genuine timestamps; that is a
-   different thing and stays that way.)
+   different thing and stays that way — but a deadline picked in a date input crosses into
+   that timestamp through `fromDateInput` / `toDateInput` in `lib/date.ts`, which build it
+   from **local** parts: local midnight, the same edge `bucketByDeadline` compares against.
+   `new Date('YYYY-MM-DD')` is UTC midnight and put a "today" deadline into OVERDUE for
+   anyone west of UTC.)
 10. **Ownership is validated centrally** — `findOwnedQuest` / `findOwnedRecurringQuest`.
     Never re-implement the "is this row mine" check inline in a route.
 11. **XP granting is atomic** — `grantXp` does a SQL-level increment inside a transaction.

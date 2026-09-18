@@ -9,6 +9,20 @@ export function localDateString(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+// The two halves of a `<input type="date">` round-trip, both in the CLIENT's local
+// timezone. `new Date('YYYY-MM-DD')` would be UTC midnight, which west of UTC is still
+// *yesterday* locally — a deadline of "today" landed straight in OVERDUE there. Building
+// from local parts gives local midnight, the same edge bucketByDeadline compares against.
+export function fromDateInput(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y!, m! - 1, d!);
+}
+
+// A stored deadline instant → the local calendar day for the date input (inverse of the above).
+export function toDateInput(iso: string | Date): string {
+  return localDateString(typeof iso === 'string' ? new Date(iso) : iso);
+}
+
 // Human-readable date label in the client's default locale. Single source so every
 // deadline/created label formats the same way (no per-call hardcoded locale).
 export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {

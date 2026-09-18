@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { client, type Quest, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { useQuestsStore } from '~/stores/quests';
-import { localDateString } from '~/lib/date';
+import { fromDateInput, toDateInput } from '~/lib/date';
 import { XP_REWARDS, type Difficulty, type QuestPriority } from '@soloquest/shared';
 import { PRIORITY_DISPLAY_ORDER, PRIORITY_STYLES, PRIORITY_DL_CLASS } from '~/lib/priority';
 
@@ -32,10 +32,6 @@ const parentChoices = computed(() =>
 );
 const xpForSelected = computed(() => XP_REWARDS[difficulty.value]);
 
-function toDateInput(iso: string) {
-  return localDateString(new Date(iso));
-}
-
 watch(
   () => props.initial,
   (q) => {
@@ -57,7 +53,7 @@ async function onCreate() {
       description: description.value || undefined,
       difficulty: difficulty.value,
       priority: priority.value,
-      deadline: deadline.value ? new Date(deadline.value) : null,
+      deadline: deadline.value ? fromDateInput(deadline.value) : null,
       parentId: parentId.value || null,
       tagIds: selectedTags.value.map((t) => t.id),
     },
@@ -94,7 +90,7 @@ async function onEdit() {
   if (difficulty.value !== initial.difficulty) changes.difficulty = difficulty.value;
   if (priority.value !== initial.priority) changes.priority = priority.value;
   const initialDeadline = initial.deadline ? toDateInput(initial.deadline) : '';
-  if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? new Date(deadline.value) : null;
+  if (deadline.value !== initialDeadline) changes.deadline = deadline.value ? fromDateInput(deadline.value) : null;
   if (parentId.value !== (initial.parentId ?? '')) changes.parentId = parentId.value || null;
   const initialTagIds = new Set((initial.tags ?? []).map((t) => t.id));
   const currentTagIds = selectedTags.value.map((t) => t.id);
