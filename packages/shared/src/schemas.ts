@@ -12,19 +12,20 @@ export function normalizeTagName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-export const createQuestSchema = z.object({
+// Default-free base shared by create and update. No field here carries a Zod `.default()`:
+// in Zod 4 `.partial()` keeps an inner default alive (optional → undefined → default), so a
+// default on the base would make every PATCH silently write that value (a title-only edit
+// resetting difficulty to E was exactly that bug). Defaults that create needs are added
+// on `createQuestSchema` via `.extend()`, never here.
+const questFields = z.object({
   title: z.string().min(1).max(255),
   // Optional, matching the nullable DB column and recurring quests. Omitted on create →
-  // NULL; an empty string is allowed (the edit form sends it to clear). No Zod default —
-  // a `.default("")` would leak through `updateQuestSchema.partial()` and make an unrelated
-  // PATCH wipe the description.
+  // NULL; an empty string is allowed (the edit form sends it to clear).
   description: z.string().optional(),
-  difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
-  // Optional, and deliberately WITHOUT a Zod default (unlike difficulty): omitted on create →
-  // the DB column's NOT NULL DEFAULT 'normal' fills it. A schema `.default()` here would leak
-  // through `updateQuestSchema`'s `.partial()` and make every PATCH (e.g. a title-only edit)
-  // silently reset priority to 'normal'. Following the `tagIds` optional pattern keeps a PATCH
-  // that omits priority a genuine no-op on it, and a present value is written as sent.
+  difficulty: z.enum(DIFFICULTY_ORDER),
+  // Optional, and deliberately WITHOUT a Zod default even on create: omitted → the DB
+  // column's NOT NULL DEFAULT 'normal' fills it. Nothing server-side is derived from
+  // priority, so (unlike difficulty → xpReward) create doesn't need the value in hand.
   priority: z.enum(QUEST_PRIORITY).optional(),
   deadline: z.coerce.date().nullable().optional(), // null = clear the deadline
   parentId: z.string().uuid().nullable().optional(), // null = promote to top-level quest
@@ -33,9 +34,18 @@ export const createQuestSchema = z.object({
   tagIds: z.array(z.string().uuid()).max(MAX_TAGS_PER_QUEST).optional(),
 });
 
+// Create defaults difficulty to E because the route derives xpReward from it at insert time
+// (it must know the effective rank; leaving it to the DB default would mean duplicating
+// that default in the route). The default lives only on this create schema.
+export const createQuestSchema = questFields.extend({
+  difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
+});
+
 export type CreateQuestInput = z.infer<typeof createQuestSchema>;
 
-export const updateQuestSchema = createQuestSchema.partial();
+// Built from the default-free base, NOT from `createQuestSchema`, so an omitted field stays
+// omitted and a PATCH only ever touches what it names.
+export const updateQuestSchema = questFields.partial();
 
 export type UpdateQuestInput = z.infer<typeof updateQuestSchema>;
 

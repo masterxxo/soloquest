@@ -67,12 +67,14 @@ export function normalizeRecurrence(config: {
   }
 }
 
-// Plain object kept separate so updateRecurringQuestSchema can call .partial()
-// on it — .partial() is unavailable once a schema is wrapped by .superRefine().
+// Plain, default-free object kept separate so updateRecurringQuestSchema can call
+// .partial() on it — .partial() is unavailable once a schema is wrapped by .superRefine(),
+// and (as with quests) a Zod `.default()` here would survive `.partial()` and make every
+// PATCH reset that field. The create-only default is added via `.extend()` below.
 const recurringQuestFields = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
-  difficulty: z.enum(DIFFICULTY_ORDER).default("E"),
+  difficulty: z.enum(DIFFICULTY_ORDER),
   recurrenceType: z.enum(RECURRENCE_TYPE),
   // Semantics depend on recurrenceType:
   //   daily        → null
@@ -82,18 +84,20 @@ const recurringQuestFields = z.object({
 });
 
 // every_x_days is meaningless without an interval — enforce it at the edge.
-export const createRecurringQuestSchema = recurringQuestFields.superRefine((data, ctx) => {
-  if (
-    data.recurrenceType === 'every_x_days' &&
-    (data.recurrenceValue === null || data.recurrenceValue === undefined)
-  ) {
-    ctx.addIssue({
-      code: "custom",
-      path: ['recurrenceValue'],
-      message: 'recurrenceValue is required when recurrenceType is "every_x_days"',
-    });
-  }
-});
+export const createRecurringQuestSchema = recurringQuestFields
+  .extend({ difficulty: z.enum(DIFFICULTY_ORDER).default("E") })
+  .superRefine((data, ctx) => {
+    if (
+      data.recurrenceType === 'every_x_days' &&
+      (data.recurrenceValue === null || data.recurrenceValue === undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ['recurrenceValue'],
+        message: 'recurrenceValue is required when recurrenceType is "every_x_days"',
+      });
+    }
+  });
 
 export type CreateRecurringQuestInput = z.infer<typeof createRecurringQuestSchema>;
 

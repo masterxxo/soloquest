@@ -459,5 +459,11 @@ pnpm dlx @better-auth/cli@latest generate --config ./src/auth.ts \
   import. Business logic lives in `apps/api`; pure shared logic (leveling, enums, Zod
   schemas) lives in `packages/shared`.
 - Zod validation on every mutating endpoint.
+- **A Zod `.default()` never sits on a field that also feeds a `.partial()` update schema.**
+  In Zod 4 an inner default survives `.partial()`, so every PATCH would silently write it
+  (a title-only edit once reset `difficulty` to E and `xpReward` to 10). Build the update
+  schema from a default-free base object and add create-only defaults via `.extend()` on
+  the create schema (`questFields` / `recurringQuestFields` in `@soloquest/shared`);
+  `schemas.test.ts` pins this.
 - Do not reintroduce removed patterns: a custom users table, manual password hashing,
   `uuid` user ids, a `username` field, or campaigns.
