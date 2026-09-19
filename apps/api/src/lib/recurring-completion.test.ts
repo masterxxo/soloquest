@@ -290,4 +290,31 @@ describe('completeRecurringQuestForDate', () => {
     expect(onStart.streak.currentStreak).toBe(1);
     expect(await getCompletionDates(db, quest.id)).toEqual(['2026-07-02']);
   });
+
+  it('9. every_x_days is due on the local creation day, even when its UTC day differs', async () => {
+    // createdAt is 2026-07-10 02:00 UTC = 2026-07-09 22:00 in New York. Every 2 days from the
+    // LOCAL start: 07-09 and 07-11 are due, 07-10 is not. Counting from the UTC day (07-10)
+    // would refuse 07-09 ("not required") and accept 07-10 instead.
+    const tz = 'America/New_York';
+    const quest = await seedQuest(db, {
+      userId: USER,
+      recurrenceType: 'every_x_days',
+      recurrenceValue: 2,
+      createdAt: new Date(Date.UTC(2026, 6, 10, 2, 0)),
+    });
+    const complete = (completedDate: string) =>
+      completeRecurringQuestForDate(db, {
+        quest,
+        userId: USER,
+        completedDate,
+        today: '2026-07-11',
+        timezone: tz,
+      });
+
+    expect(await complete('2026-07-10')).toEqual({ error: 'not_required' });
+    expectSuccess(await complete('2026-07-09'));
+    const onSecond = expectSuccess(await complete('2026-07-11'));
+    expect(onSecond.streak.currentStreak).toBe(2);
+    expect(await getCompletionDates(db, quest.id)).toEqual(['2026-07-09', '2026-07-11']);
+  });
 });

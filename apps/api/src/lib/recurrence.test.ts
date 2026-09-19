@@ -5,7 +5,34 @@ import {
   isCompletableDate,
   isWithinBackfillWindow,
   toDateString,
+  wasRequiredOn,
 } from './recurrence';
+
+describe('wasRequiredOn', () => {
+  it('every_x_days counts from the local start day, not the UTC day of createdAt', () => {
+    // Created 2026-07-09 22:00 in New York = 2026-07-10 02:00 UTC. Every 2 days from the
+    // LOCAL start → due on 07-09, 07-11, 07-13; the UTC day (07-10) would shift every due
+    // day by one (07-10, 07-12 …), so the streak, cron and heatmap were consistently wrong.
+    const tz = 'America/New_York';
+    const createdAt = new Date('2026-07-10T02:00:00Z');
+    const quest = { recurrenceType: 'every_x_days', recurrenceValue: 2, createdAt };
+    const questStart = getUserDate(createdAt, tz);
+    const on = (iso: string) => wasRequiredOn(quest, getUserDate(new Date(`${iso}T12:00:00Z`), tz), questStart);
+
+    expect(toDateString(questStart)).toBe('2026-07-09');
+    expect(on('2026-07-09')).toBe(true);
+    expect(on('2026-07-10')).toBe(false);
+    expect(on('2026-07-11')).toBe(true);
+    expect(on('2026-07-12')).toBe(false);
+    expect(on('2026-07-13')).toBe(true);
+  });
+
+  it('every_x_days is never required before the start day', () => {
+    const start = new Date('2026-07-09T00:00:00.000Z');
+    const quest = { recurrenceType: 'every_x_days', recurrenceValue: 2, createdAt: start };
+    expect(wasRequiredOn(quest, new Date('2026-07-07T00:00:00.000Z'), start)).toBe(false);
+  });
+});
 
 describe('isCompletableDate', () => {
   // All args are local calendar dates in the user's timezone ('YYYY-MM-DD').

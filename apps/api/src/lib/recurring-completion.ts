@@ -69,12 +69,15 @@ export async function completeRecurringQuestForDate(
 
   // Anchor every bound through getUserDate so today, the ritual's start day, and the
   // target day all live in one frame (the user's local calendar) — no UTC/local mixing.
-  const createdDate = toDateString(getUserDate(quest.createdAt, timezone));
+  const questStart = getUserDate(quest.createdAt, timezone);
+  const createdDate = toDateString(questStart);
   if (!isCompletableDate(completedDate, today, createdDate)) return { error: 'out_of_range' };
   if (!isWithinBackfillWindow(completedDate, today, MAX_BACKFILL_DAYS)) {
     return { error: 'out_of_window' };
   }
-  if (!wasRequiredOn(quest, fromDateString(completedDate))) return { error: 'not_required' };
+  if (!wasRequiredOn(quest, fromDateString(completedDate), questStart)) {
+    return { error: 'not_required' };
+  }
 
   return db.transaction(async (tx) => {
     const [completion] = await tx
@@ -105,7 +108,6 @@ export async function completeRecurringQuestForDate(
       .where(eq(recurringQuestCompletions.recurringQuestId, quest.id));
     const completedDates = new Set(allCompletions.map((row) => row.completedDate));
 
-    const questStart = getUserDate(quest.createdAt, timezone);
     const recalculated = recalculateStreak(
       quest,
       completedDates,

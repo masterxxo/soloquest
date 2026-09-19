@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { client, type QuestWithWarnings, type QuestTag } from '~/lib/api-client';
 import { readApiError } from '~/lib/api-error';
+import { fromDateInput } from '~/lib/date';
 import { useFeedbackStore } from '~/stores/feedback';
 import type { Difficulty } from '@soloquest/shared';
 
@@ -46,7 +47,7 @@ async function submit() {
       json: {
         title: trimmed,
         difficulty: difficulty.value,
-        deadline: deadline.value ? new Date(deadline.value) : null,
+        deadline: deadline.value ? fromDateInput(deadline.value) : null,
         tagIds: selectedTags.value.map((t) => t.id),
       },
     });

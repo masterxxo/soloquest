@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRecurrence, RecurrenceValidationError } from './recurring';
+import {
+  completeRecurringQuestSchema,
+  normalizeRecurrence,
+  RecurrenceValidationError,
+} from './recurring';
 
 describe('normalizeRecurrence', () => {
   it('forces recurrenceValue to null for daily', () => {
@@ -50,5 +54,18 @@ describe('normalizeRecurrence', () => {
     expect(() =>
       normalizeRecurrence({ recurrenceType: 'weekdays', recurrenceValue: 0b10000000 }),
     ).toThrow(RecurrenceValidationError);
+  });
+});
+
+describe('completeRecurringQuestSchema', () => {
+  it('accepts an empty body — a live complete leaves "today" to the server', () => {
+    expect(completeRecurringQuestSchema.parse({})).toEqual({});
+  });
+
+  it('accepts an explicit calendar day (backfill) and rejects anything else', () => {
+    expect(completeRecurringQuestSchema.parse({ completedDate: '2026-07-09' })).toEqual({
+      completedDate: '2026-07-09',
+    });
+    expect(completeRecurringQuestSchema.safeParse({ completedDate: '2026-07-09T00:00:00Z' }).success).toBe(false);
   });
 });

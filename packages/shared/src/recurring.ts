@@ -105,12 +105,15 @@ export type CreateRecurringQuestInput = z.infer<typeof createRecurringQuestSchem
 export const updateRecurringQuestSchema = recurringQuestFields.partial();
 export type UpdateRecurringQuestInput = z.infer<typeof updateRecurringQuestSchema>;
 
-// The client sends the calendar date in its own timezone, so the server records
-// the completion against the user's local day rather than a UTC instant.
+// A calendar day, never a UTC instant. Omitted on a live "complete today" — the server
+// resolves "today" in the user's saved timezone, the only frame it judges due days in
+// (a browser-local date would disagree with it around midnight). A backfill sends the
+// past day it targets explicitly.
 export const completeRecurringQuestSchema = z.object({
   completedDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'completedDate must be in YYYY-MM-DD format'),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'completedDate must be in YYYY-MM-DD format')
+    .optional(),
 });
 export type CompleteRecurringQuestInput = z.infer<typeof completeRecurringQuestSchema>;
 

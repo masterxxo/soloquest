@@ -1,4 +1,4 @@
-import { wasRequiredOn } from './recurrence';
+import { getUserDate, wasRequiredOn } from './recurrence';
 
 /** The only fields the reset rule needs from a recurring quest row. */
 export interface ResettableRecurringQuest {
@@ -13,7 +13,8 @@ export interface ResettableRecurringQuest {
  * the batched reads and the bulk write, this owns the rule, so it is unit-testable with no DB.
  *
  * A streak is reset when, on `day` (a *closed* day: yesterday in the user's timezone):
- *   - the quest was required (wasRequiredOn — the same rule the routes use), and
+ *   - the quest was required (wasRequiredOn — the same rule the routes use, with each
+ *     ritual's start day derived in `timezone` so the frame matches `day`), and
  *   - no completion was recorded for it, and
  *   - its streak is currently running (> 0).
  *
@@ -25,11 +26,12 @@ export function selectStreaksToReset(params: {
   completedRecurringQuestIds: ReadonlySet<string>;
   currentStreaks: ReadonlyMap<string, number>;
   day: Date;
+  timezone: string;
 }): string[] {
-  const { recurringQuests, completedRecurringQuestIds, currentStreaks, day } = params;
+  const { recurringQuests, completedRecurringQuestIds, currentStreaks, day, timezone } = params;
 
   return recurringQuests
-    .filter((quest) => wasRequiredOn(quest, day))
+    .filter((quest) => wasRequiredOn(quest, day, getUserDate(quest.createdAt, timezone)))
     .filter((quest) => !completedRecurringQuestIds.has(quest.id))
     .filter((quest) => (currentStreaks.get(quest.id) ?? 0) > 0)
     .map((quest) => quest.id);

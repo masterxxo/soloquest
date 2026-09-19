@@ -75,6 +75,9 @@ outside the agent. Re-running it inside the agent is pure overhead.
   prod/dev DB) migrated to the current schema, one per test. Get a database from it and
   pass it into the code under test — the helpers take a `DrizzleDB` argument, so nothing
   about `db` or `grantXp` is ever mocked. See `quest-cascade.test.ts` for the pattern.
+  **Placement is colocated, on purpose:** a unit test sits next to the module it covers
+  (`lib/tags.ts` → `lib/tags.test.ts`); only cross-module integration tests (HTTP-level via
+  `app.request()`, harness smoke tests) go in `apps/api/src/test/`. No `__tests__/` folders.
 - **Lint:** ESLint 9, flat config, shared via `@soloquest/eslint-config`.
 - **Deploy:** Hetzner + Coolify; GitHub Actions runs lint ∥ typecheck → test, then pings
   Coolify's deploy webhooks on `master`.
@@ -127,7 +130,11 @@ packages/eslint-config Shared flat config + the language rule
    helper (`getUserDate` / `toDateString` in the API, `localDateString` in the web app).
    Do not mix frames of reference — this rule governs rituals, streaks and the completion
    calendar. (One-off quest `deadline` / `completedAt` are genuine timestamps; that is a
-   different thing and stays that way.)
+   different thing and stays that way — but a deadline picked in a date input crosses into
+   that timestamp through `fromDateInput` / `toDateInput` in `lib/date.ts`, which build it
+   from **local** parts: local midnight, the same edge `bucketByDeadline` compares against.
+   `new Date('YYYY-MM-DD')` is UTC midnight and put a "today" deadline into OVERDUE for
+   anyone west of UTC.)
 10. **Ownership is validated centrally** — `findOwnedQuest` / `findOwnedRecurringQuest`.
     Never re-implement the "is this row mine" check inline in a route.
 11. **XP granting is atomic** — `grantXp` does a SQL-level increment inside a transaction.
@@ -139,6 +146,9 @@ packages/eslint-config Shared flat config + the language rule
     `current` / `longest` / `total` from the *full* completion set via `recalculateStreak`,
     using the **same `wasRequiredOn` predicate** as the cron (`selectStreaksToReset`) and the
     heatmap (`buildRecurringCalendar`) — one due-day rule for all three, so they cannot drift.
+    `wasRequiredOn` takes the ritual's **local start day** (`getUserDate(createdAt, tz)`) as an
+    explicit argument in the same frame as the judged day; it never reads `createdAt` raw, so the
+    `every_x_days` cadence counts from the day the user saw the ritual created, not its UTC day.
     `current` = the run of consecutive *required* days each holding a completion, ending at the
     most recent required day; **today, if required but not yet done, is "in progress"** — it
     neither extends nor breaks the streak (mirrors the cron judging only closed days). `longest`
@@ -362,7 +372,13 @@ All of the following exist, are used, and are meant to stay:
     `invalidate()` from exactly those paths, and the next `load()` (e.g. entering Status) refetches.
 - Achievements (streak milestones and lifetime totals), seeded idempotently.
 - Per-user timezone (`user_settings`), and a nightly cron that judges yesterday in each
-  user's own timezone and resets broken streaks.
+  user's own timezone and resets broken streaks. **The settings row is created only by a
+  save** — `GET /api/user/settings` never lazy-creates it and reports `isDefault: true` while
+  none exists (the fallback `UTC`). That signal drives a **one-shot boot-time auto-detect**
+  (`useTimezoneAutodetect`, default layout): a user who never chose a zone gets the browser's
+  zone saved once; any saved row — a deliberate `UTC` included — is never overridden. A ritual's
+  live "complete today" sends **no `completedDate`** — the server resolves today in the saved
+  zone, the only frame it judges due days in; only a backfill sends its explicit past day.
 - **Remote MCP** (`/api/mcp`) for AI hosts: per-user API keys (Status → API keys) and four
   quest tools (`list-quests`, `get-quest`, `create-quest`, `update-quest`) that proxy the
   existing CRUD routes.

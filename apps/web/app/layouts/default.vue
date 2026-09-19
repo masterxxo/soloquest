@@ -2,6 +2,7 @@
 import { usePlayerStore } from '~/stores/player';
 import { useSignOut } from '~/composables/useSignOut';
 import { useListCacheSync } from '~/composables/useListCacheSync';
+import { useTimezoneAutodetect } from '~/composables/useTimezoneAutodetect';
 import { useModalStackStore } from '~/stores/modalStack';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 
@@ -17,6 +18,8 @@ watchEffect(() => player.hydrate(session.value?.user));
 // visibility soft-refresh. Pages may still call store.load() — it is TTL-gated.
 const userId = computed(() => session.value?.user?.id);
 useListCacheSync(userId);
+// One-shot: save the browser's zone for a user who has never chosen one (see composable).
+useTimezoneAutodetect(userId);
 
 // Lime tip at the XP bar's growing edge — flashes on each gain (increase only; a level-up
 // resets the in-level counter downward). Keyed so the one-shot animation replays every time.

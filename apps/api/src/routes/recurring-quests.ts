@@ -79,7 +79,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       const questStart = getUserDate(quest.createdAt, timezone);
       return {
         ...quest,
-        isDueToday: wasRequiredOn(quest, today),
+        isDueToday: wasRequiredOn(quest, today, questStart),
         isCompletedToday: completedDates.has(todayStr),
         last7: buildRecentHistory(quest, today, HISTORY_DAYS, questStart, completedDates),
       };
@@ -217,10 +217,12 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       const timezone = await getUserTimezone(db, userId);
       const today = toDateString(getUserDate(new Date(), timezone));
 
+      // No date = "today", resolved here in the user's timezone — the same frame every
+      // range check below uses, so a client clock can never push a live complete out of range.
       const result = await completeRecurringQuestForDate(db, {
         quest,
         userId,
-        completedDate,
+        completedDate: completedDate ?? today,
         today,
         timezone,
       });
@@ -277,7 +279,7 @@ export const recurringQuestsRouter = new Hono<{ Variables: Variables }>()
       );
     const completedDates = new Set(windowCompletions.map((row) => row.completedDate));
 
-    const calendar = buildRecurringCalendar(quest, windowStart, today, completedDates);
+    const calendar = buildRecurringCalendar(quest, windowStart, today, questStart, completedDates);
 
     return c.json({
       streak: streak ?? null,
