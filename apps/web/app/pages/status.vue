@@ -46,11 +46,11 @@ const unlockedCount = computed(
 const totalAchievements = STREAK_ACHIEVEMENT_THRESHOLDS.length + TOTAL_ACHIEVEMENT_THRESHOLDS.length;
 
 // Placeholder attribute meters — the mechanic does not exist (NEEDS DOMAIN). Presentation only.
-const ATTRIBUTES = [
-  { key: 'STR', pct: 62 },
-  { key: 'INT', pct: 74 },
-  { key: 'AGI', pct: 48 },
-];
+// const ATTRIBUTES = [
+//   { key: 'STR', pct: 62 },
+//   { key: 'INT', pct: 74 },
+//   { key: 'AGI', pct: 48 },
+// ];
 
 const settings = useUserSettings();
 function onTimezoneChange(event: Event) {
@@ -70,8 +70,10 @@ const { loggingOut, onSignOut } = useSignOut();
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-dl-band-line pb-2 font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">
       <span class="text-dl-ink">Status</span>
-      <span class="normal-case text-dl-ink-faint">Profile, achievements, tags, API keys and settings.</span>
+      <span class="normal-case text-dl-ink-faint">Profile, achievements, tags and settings.</span>
+      <!--
       <span class="ml-auto border border-dl-gold bg-dl-gold/10 px-2 py-0.5 text-dl-ink">2 sections need domain confirmation</span>
+      -->
     </div>
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -119,9 +121,12 @@ const { loggingOut, onSignOut } = useSignOut();
           </div>
         </div>
 
+        <!--
         <RankLadder />
+        -->
 
         <!-- Attributes (NEEDS DOMAIN) -->
+        <!--
         <section class="corner-cut flex flex-col gap-3 border border-dl-grid-line bg-dl-surface p-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="font-dl-mono text-dl-label uppercase tracking-wide text-dl-ink-muted">Attributes · STR / INT / AGI</span>
@@ -140,6 +145,7 @@ const { loggingOut, onSignOut } = useSignOut();
             <span class="font-dl-mono text-[0.6rem] uppercase tracking-wide text-dl-ink-faint">Source undefined</span>
           </div>
         </section>
+        -->
       </div>
 
       <!-- ── Right column ────────────────────────────────────────────────────────── -->
@@ -184,7 +190,9 @@ const { loggingOut, onSignOut } = useSignOut();
 
         <TagManager />
 
+        <!--
         <ApiKeyManager />
+        -->
 
         <!-- Settings -->
         <section class="corner-cut flex flex-col gap-4 border border-dl-grid-line bg-dl-surface p-4">

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Placeholder — inventory / items is a later slice.
+
+throw createError({ statusCode: 404, statusMessage: 'Not Found' });
 </script>
 
 <template>
